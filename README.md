@@ -1,6 +1,11 @@
-# 401 表单 PDF 转 JSON 工具
+# 台灣稅務表單 PDF 轉 JSON 工具
 
-自动将台湾营业人销售额与税额申报书（401表）PDF 转换为结构化 JSON 格式。
+自動將台灣稅務表單 PDF 轉換為結構化 JSON 格式。
+
+## 支援表單
+
+- **401 表單**：營業人銷售額與稅額申報書
+- **KK-1 表單**：扣繳單位稅籍編號扣繳暨免扣繳憑單申報書（新增）
 
 ## 功能特点
 
@@ -19,26 +24,39 @@ pip install -r requirements.txt
 
 ## 使用方法
 
-### 基本用法
+### 401 表單解析
 
 ```bash
+# 基本用法
 python parse_401.py 03-04.pdf
-```
 
-这会在同一目录下生成 `03-04.json` 文件。
-
-### 指定输出路径
-
-```bash
+# 指定輸出路徑
 python parse_401.py 03-04.pdf output/result.json
 ```
 
-### 批量处理
+### KK-1 表單解析（新增）
 
 ```bash
-# 处理当前目录所有 PDF
-for file in *.pdf; do
+# 基本用法
+python parse_kk1.py KK-1.pdf
+
+# 指定輸出路徑
+python parse_kk1.py KK-1.pdf output/kk1_result.json
+```
+
+**注意**：KK-1 表單如為圖像格式 PDF，需要安裝 OCR 工具。詳見 [KK-1_README.md](KK-1_README.md)。
+
+### 批量處理
+
+```bash
+# 處理當前目錄所有 401 PDF
+for file in *-*.pdf; do
     python parse_401.py "$file"
+done
+
+# 處理所有 KK-1 PDF
+for file in KK-*.pdf; do
+    python parse_kk1.py "$file"
 done
 ```
 
@@ -88,31 +106,58 @@ done
 
 查看 `template_401.json` 文件以了解完整的 JSON 结构示例。
 
-## 文件说明
+## 文件說明
 
-- `parse_401.py` - 主要解析脚本
-- `template_401.json` - JSON 结构模板示例
-- `requirements.txt` - Python 依赖
-- `README.md` - 本说明文件
+### 401 表單相關
+- `parse_401.py` - 401 表單解析腳本
+- `template_401.json` - 401 JSON 結構模板示例
 
-## 进阶使用
+### KK-1 表單相關（新增）
+- `parse_kk1.py` - KK-1 表單解析腳本
+- `KK-1.json` - KK-1 JSON 結構示例（實際數據）
+- `KK-1_README.md` - KK-1 詳細說明文件
 
-### 在 Python 代码中使用
+### 通用文件
+- `requirements.txt` - Python 依賴
+- `README.md` - 本說明文件
+
+## 進階使用
+
+### 在 Python 程式碼中使用 401 解析器
 
 ```python
 from parse_401 import Form401Parser
 
-# 创建解析器
+# 創建解析器
 parser = Form401Parser("03-04.pdf")
 
 # 解析 PDF
 data = parser.parse()
 
-# 访问数据
-print(f"营业人: {data['基本信息']['营业人名称']}")
-print(f"应缴税额: {data['税额计算']['11_本期应实缴税额']['金额']}")
+# 訪問數據
+print(f"營業人: {data['基本信息']['營業人名稱']}")
+print(f"應繳稅額: {data['稅額計算']['11_本期應實繳稅額']['金額']}")
 
-# 保存为 JSON
+# 保存為 JSON
+parser.save_json("output.json")
+```
+
+### 在 Python 程式碼中使用 KK-1 解析器（新增）
+
+```python
+from parse_kk1 import FormKK1Parser
+
+# 創建解析器
+parser = FormKK1Parser("KK-1.pdf")
+
+# 解析 PDF
+data = parser.parse()
+
+# 訪問數據
+print(f"扣繳單位: {data['基本資訊']['名稱']}")
+print(f"合計扣繳稅額: {data['合計']['扣繳稅額']:,} 元")
+
+# 保存為 JSON
 parser.save_json("output.json")
 ```
 
