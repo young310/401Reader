@@ -49,12 +49,12 @@ class FormKK1ParserV3:
     def extract_text_with_ocr(self) -> str:
         """使用 OCR 提取文本"""
         try:
-            images = convert_from_path(self.pdf_path)  # 使用默認 DPI 保持表格結構
+            images = convert_from_path(self.pdf_path, dpi=400)  # 提高 DPI 以改善識別
             text = ""
             for i, image in enumerate(images):
                 print(f"正在 OCR 處理第 {i+1}/{len(images)} 頁...")
                 # 使用繁體中文 OCR
-                page_text = pytesseract.image_to_string(image, lang='chi_tra')
+                page_text = pytesseract.image_to_string(image, lang='chi_tra+eng')
                 text += page_text + "\n"
             return text
         except Exception as e:
@@ -69,7 +69,8 @@ class FormKK1ParserV3:
         if not value or value.strip() == "" or value.strip() == "-":
             return 0
         try:
-            clean_value = re.sub(r'[,.\s元]', '', value)
+            # 移除常見噪音字符
+            clean_value = re.sub(r'[,.\s元|｜-]', '', value)
             return int(clean_value) if clean_value else 0
         except ValueError:
             return 0
@@ -142,8 +143,12 @@ class FormKK1ParserV3:
             ("退職", "93", "退職所得"),
             ("財產交易", "76", "財產交易所得"),
             ("跨境銷售", "98", "外國營利事業跨境銷售電子勞務所得"),
+            ("電子勞務", "A2", "外國營利事業跨境銷售電子勞務所得"),
             ("A2", "A2", "外國營利事業跨境銷售電子勞務所得"),
+            ("營業利潤", "A3", "外國營利事業取得勞務報酬或營業利潤"),
+            ("勞務報酬", "A3", "外國營利事業取得勞務報酬或營業利潤"),
             ("A3", "A3", "外國營利事業取得勞務報酬或營業利潤"),
+            ("所得稅法第25條", "A4", "外國營利事業適用所得稅法第25條所得"),
             ("A4", "A4", "外國營利事業適用所得稅法第25條所得"),
             ("A", "A", "前4項以外之其他所得"), # 匹配單獨的 A
             ("其他", "92", "其他"),
@@ -192,7 +197,9 @@ class FormKK1ParserV3:
             # 條件: 已經匹配到類型，且行中有大數字 (e.g. > 1000)，且該行不是 Total 行
             # 加強過濾: 排除頁尾資訊 (電話, 日期, 編號) 以及 合計行
             
-            is_total_line = re.search(r"(合計|總\s*計|含\s*計|含\s*加\s*圖)", line)
+            # 使用更寬鬆的合計行判斷：以 "合" 或 "含" 開頭 (忽略前面的 | 和空格)
+            is_total_line = re.search(r"^[\|\s]*[合含]", line) or re.search(r"(合計|總\s*計|含\s*計|含\s*加\s*圖)", line)
+            
             is_footer_noise = False
             if re.search(r"(電話|日|號)", line):
                 is_footer_noise = True
@@ -215,18 +222,44 @@ class FormKK1ParserV3:
                 is_data_line = True
                 range_str = range_match.group(1)
                 
-                # 提取數據 logic (同前)
+                # 提取數據 logic
                 pre_range = line.split(range_str)[0]
                 count_match = re.search(r'(\d+)\s*$', pre_range)
                 count = self.safe_int(count_match.group(1)) if count_match else 0
                 
                 post_range = line.split(range_str)[1]
                 amounts = re.findall(r'([\d,.]+)', post_range)
-                if len(amounts) >= 2:
-                    amount = self.safe_int(amounts[0])
-                    tax = self.safe_int(amounts[1])
-                elif len(amounts) == 1:
-                    amount = self.safe_int(amounts[0])
+                
+                # 如果當前行沒有足夠的金額，嘗試往下找
+                if len(amounts) < 2:
+                    # 獲取當前行索引
+                    try:
+                        current_idx = self.lines.index(line)
+                        # 往下看 5 行
+                        lookahead_text = " ".join(self.lines[current_idx+1 : current_idx+6])
+                        more_amounts = re.findall(r'([\d,.]+)', lookahead_text)
+                        amounts.extend(more_amounts)
+                    except ValueError:
+                        pass
+                
+                # 清理並轉換
+                valid_amounts = []
+                for a in amounts:
+                    val = self.safe_int(a)
+                    if val > 0:
+                        valid_amounts.append(val)
+                
+                # print(f"DEBUG: Valid amounts for {range_str}: {valid_amounts}")
+                
+                # 智能分配 Amount, Tax
+                valid_amounts.sort(reverse=True)
+                
+                if len(valid_amounts) >= 1:
+                    amount = valid_amounts[0]
+                    if len(valid_amounts) >= 2:
+                        tax = valid_amounts[1]
+                
+                # print(f"DEBUG: Range {range_str} found. Amounts: {valid_amounts}")
 
             elif not range_match and len(large_amounts) >= 2 and last_matched_code != "UNKNOWN" and not is_total_line and not is_footer_noise:
                 # 嘗試解析無 range 的數據行 (嚴格模式：必須有金額和稅額)
@@ -290,7 +323,8 @@ class FormKK1ParserV3:
         # 尋找包含 3 個以上大數字的行，或者是包含 "合" "計" 的行
         candidate_indices = []
         for i, line in enumerate(self.lines):
-            if re.search(r"[合含].*[計]", line) or re.search(r"總\s*計", line):
+            # 使用更寬鬆的判斷：以 "合" 或 "含" 開頭，或者包含 "合計" 等關鍵字
+            if re.search(r"^[\|\s]*[合含]", line) or re.search(r"(合計|總\s*計|含\s*計|含\s*加\s*圖)", line):
                  candidate_indices.append(i)
         
         parsed_total = self._empty_total()
@@ -394,21 +428,202 @@ class FormKK1ParserV3:
             "退撫金額_不計入薪資收入課稅": self.safe_int(pension_amount) if pension_amount else 0
         }
 
+    def parse_single_statement(self) -> Dict[str, Any]:
+        """解析單張扣繳憑單 (非清單模式)"""
+        # 尋找金額
+        # 尋找包含大數字和百分比的行，通常是金額行
+        # 格式: 給付總額 ... 扣繳率 ... 扣繳稅額 ... 給付淨額
+        amount = 0
+        tax = 0
+        rate = 0
+        
+        # 1. 嘗試尋找有 % 的行
+        for line in self.lines:
+            if "%" in line:
+                # 提取所有數字
+                nums = re.findall(r'[\d,]+', line)
+                clean_nums = [self.safe_int(x) for x in nums if self.safe_int(x) > 0]
+                clean_nums.sort(reverse=True)
+                
+                # 通常最大的是給付總額，第二大是給付淨額，第三大是扣繳稅額
+                if len(clean_nums) >= 3:
+                    amount = clean_nums[0]
+                    # tax 通常是第三大 (Amount > Net > Tax)
+                    # 或者是第二大 (如果沒有 Net)
+                    # 驗證: Amount - Tax = Net?
+                    # or Amount * Rate = Tax?
+                    
+                    # 嘗試找 Tax
+                    # 假設 clean_nums[0] 是總額
+                    # 檢查剩餘數字中是否有合理的 Tax
+                    possible_taxes = clean_nums[1:]
+                    for t in possible_taxes:
+                         # 粗略檢查 20% 或 10%
+                         if abs(amount * 0.2 - t) < 10 or abs(amount * 0.1 - t) < 10 or abs(amount * 0.15 - t) < 10:
+                             tax = t
+                             break
+                         # 或者如果只有 Amount, Net, Tax，那 Tax 應該是 Amount - Net
+                         # 這裡簡單取第三大 (如果是 Amount, Net, Tax)
+                         # 如果是 Amount, Tax, Rate...
+                    
+                    if tax == 0 and len(clean_nums) >= 3:
+                         # 盲猜: Amount, Net, Tax
+                         if clean_nums[0] > clean_nums[1] > clean_nums[2]:
+                             if abs(clean_nums[0] - clean_nums[2] - clean_nums[1]) < 100:
+                                 tax = clean_nums[2]
+        
+        # 如果策略 1 失敗，嘗試尋找最大的兩個數字
+        if amount == 0:
+             all_nums = []
+             for line in self.lines:
+                 # 忽略頁尾雜訊
+                 if re.search(r"(Copy|備查|本\()", line):
+                     continue
+                     
+                 nums = re.findall(r'[\d,]+', line)
+                 all_nums.extend([self.safe_int(x) for x in nums])
+             
+             all_nums = [n for n in all_nums if n > 1000] # 過濾年份等
+             all_nums.sort(reverse=True)
+             
+             if len(all_nums) >= 2:
+                 amount = all_nums[0]
+                 # 嘗試找 tax
+                 for n in all_nums[1:]:
+                     if n < amount:
+                         # 檢查常見稅率
+                         ratio = n / amount
+                         if 0.05 <= ratio <= 0.35: # 5% ~ 35%
+                             tax = n
+                             break
+
+        # 嘗試識別所得類別
+        # 尋找打勾的項目或代號
+        income_type = "其他"
+        income_code = "UNKNOWN"
+        
+        # 關鍵字搜尋
+        if "權利金" in self.text or "Royalty" in self.text:
+            income_type = "權利金"
+            income_code = "53"
+        elif "薪資" in self.text or "Salary" in self.text:
+             income_type = "薪資"
+             income_code = "50"
+        elif "利息" in self.text or "Interest" in self.text:
+             income_type = "利息"
+             income_code = "5A"
+        elif "租賃" in self.text or "Rental" in self.text:
+             income_type = "租賃"
+             income_code = "51"
+        elif "執行業務" in self.text or "Professional" in self.text:
+             income_type = "執行業務報酬"
+             income_code = "9A"
+             
+        # 構建結果
+        item = {
+            "所得類別": income_type,
+            "代號": income_code,
+            "個人": {"份數": 0, "給付總額": 0, "扣繳稅額": 0},
+            "非個人": {"份數": 1, "給付總額": amount, "扣繳稅額": tax}
+        }
+        
+        if amount == 0:
+            print("警告：無法在憑單中識別出有效金額，可能是 OCR 識別失敗 (手寫或字體模糊)")
+        
+        return {
+            "基本資訊": self.parse_basic_info(),
+            "所得項目": [item],
+            "合計": {
+                "個人": {"份數": 0, "給付總額": 0, "扣繳稅額": 0},
+                "非個人": {"份數": 1, "給付總額": amount, "扣繳稅額": tax},
+                "總計": {"份數": 1, "給付總額": amount, "扣繳稅額": tax}
+            },
+            "其他資訊": self.parse_footer_info()
+        }
+
     def parse(self) -> Dict[str, Any]:
         """執行完整解析"""
         self.extract_text()
+
+        # Debug: Save extracted text
+        debug_path = self.pdf_path + ".txt"
+        with open(debug_path, "w", encoding="utf-8") as f:
+            f.write(self.text)
+        print(f"DEBUG: Extracted text saved to {debug_path}")
 
         if not self.text.strip():
             print("警告：無法提取任何文本！")
             if not OCR_AVAILABLE:
                 print("提示：安裝 OCR 相關套件以處理圖像型 PDF")
         
+        # 檢測是否為單張憑單格式 (KK-9)
+        if "非境內居住之個人" in self.text or "Withholding" in self.text:
+            self.data = self.parse_single_statement()
+            self.data["表單類型"] = "各類所得扣繳暨免扣繳憑單 (非境內居住)"
+            self.data["表單編號"] = "KK-Single"
+            return self.data
+
         basic_info = self.parse_basic_info()
         items = self.parse_income_items()
         total = self.parse_total()
         footer = self.parse_footer_info()
 
-        # 如果合計解析失敗 (0)，嘗試從項目累加
+        # 勾稽檢查與自動修正
+        # 如果識別到了合計，檢查項目總和是否異常大於合計 (通常是重複識別了合計行)
+        parsed_total_amount = total["總計"]["給付總額"]
+        if parsed_total_amount > 0:
+            calc_amount = 0
+            for item in items:
+                calc_amount += item['個人']['給付總額'] + item['非個人']['給付總額']
+            
+            # 容許 1 元誤差
+            if calc_amount > parsed_total_amount + 1:
+                print(f"警告：項目總和 ({calc_amount:,}) 大於 識別合計 ({parsed_total_amount:,})，嘗試自動修正...")
+                
+                # 策略 1: 檢查是否有單一項目的金額等於合計金額 (這是最常見的錯誤：合計行被當作項目讀取)
+                duplicate_found = False
+                for i, item in enumerate(items):
+                    item_amount = item['個人']['給付總額'] + item['非個人']['給付總額']
+                    if abs(item_amount - parsed_total_amount) <= 1:
+                        print(f"  -> 移除疑似重複識別的合計行項目: {item['所得類別']} (金額: {item_amount:,})")
+                        items.pop(i)
+                        duplicate_found = True
+                        break
+                
+                if not duplicate_found:
+                     print("  -> 未發現單一重複項目，保留原數據 (請人工確認)")
+
+        # 強制一致性：使用最終的項目總和更新合計 (避免合計行 OCR 錯誤或遺漏)
+        calc_total = {"份數": 0, "給付總額": 0, "扣繳稅額": 0}
+        calc_person = {"份數": 0, "給付總額": 0, "扣繳稅額": 0}
+        calc_non_person = {"份數": 0, "給付總額": 0, "扣繳稅額": 0}
+
+        for item in items:
+            # 累加個人
+            p = item["個人"]
+            calc_person["份數"] += p["份數"]
+            calc_person["給付總額"] += p["給付總額"]
+            calc_person["扣繳稅額"] += p["扣繳稅額"]
+            
+            # 累加非個人
+            np = item["非個人"]
+            calc_non_person["份數"] += np["份數"]
+            calc_non_person["給付總額"] += np["給付總額"]
+            calc_non_person["扣繳稅額"] += np["扣繳稅額"]
+
+        calc_total["份數"] = calc_person["份數"] + calc_non_person["份數"]
+        calc_total["給付總額"] = calc_person["給付總額"] + calc_non_person["給付總額"]
+        calc_total["扣繳稅額"] = calc_person["扣繳稅額"] + calc_non_person["扣繳稅額"]
+        
+        # 只有當計算出的總額大於0時才覆蓋 (避免清空了原本可能有值的合計)
+        if calc_total["給付總額"] > 0:
+            total = {
+                "個人": calc_person,
+                "非個人": calc_non_person,
+                "總計": calc_total
+            }
+
+        # 如果合計解析失敗 (0)，嘗試從項目累加 (此段邏輯已被上面的強制一致性覆蓋，但保留作為防呆)
         if total["總計"]["給付總額"] == 0:
             calc_total = {"份數": 0, "給付總額": 0, "扣繳稅額": 0}
             calc_person = {"份數": 0, "給付總額": 0, "扣繳稅額": 0}
@@ -459,14 +674,16 @@ class FormKK1ParserV3:
 def main():
     """主函數"""
     import sys
+    
+    print("KK Parser Version: 1.0.1")
 
     if len(sys.argv) < 2:
-        print("用法: python parse_kk1_v3.py <PDF文件路徑> [輸出JSON路徑]")
-        print("示例: python parse_kk1_v3.py KK-1.pdf output.json")
+        print("用法: python parse_kk.py <PDF文件路徑> [輸出JSON路徑]")
+        print("示例: python parse_kk.py KK-1.pdf output.json")
         sys.exit(1)
 
     pdf_path = sys.argv[1]
-    output_path = sys.argv[2] if len(sys.argv) > 2 else pdf_path.replace('.pdf', '_v3.json')
+    output_path = sys.argv[2] if len(sys.argv) > 2 else pdf_path.replace('.pdf', '.json')
 
     # 檢查文件是否存在
     if not Path(pdf_path).exists():
