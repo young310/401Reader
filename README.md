@@ -36,15 +36,28 @@ python parse_401.py 03-04.pdf output/result.json
 
 ### KK-1 表單解析（新增）
 
+KK-1 解析器提供三個版本，根據您的 PDF 類型和需求選擇：
+
 ```bash
-# 基本用法
+# V3 版本（推薦）- 支援 OCR + 改進解析邏輯
+python parse_kk1_v3.py KK-1.pdf
+
+# V2 版本 - 改進解析邏輯（僅支援文本型 PDF）
+python parse_kk1_v2.py KK-1.pdf
+
+# V1 版本 - 基礎版本 + OCR 支援
 python parse_kk1.py KK-1.pdf
 
 # 指定輸出路徑
-python parse_kk1.py KK-1.pdf output/kk1_result.json
+python parse_kk1_v3.py KK-1.pdf output/kk1_result.json
 ```
 
-**注意**：KK-1 表單如為圖像格式 PDF，需要安裝 OCR 工具。詳見 [KK-1_README.md](KK-1_README.md)。
+**版本選擇指南**：
+- 📱 **掃描版/圖像型 PDF** → 使用 `parse_kk1_v3.py`（需安裝 OCR）
+- 📄 **文本型 PDF** → 三個版本皆可，推薦 `parse_kk1_v3.py` 或 `parse_kk1_v2.py`
+- ⚠️ **提取結果不正確** → 嘗試 `parse_kk1_v3.py`
+
+詳細說明請見 [KK-1_README.md](KK-1_README.md)。
 
 ### 批量處理
 
@@ -54,9 +67,9 @@ for file in *-*.pdf; do
     python parse_401.py "$file"
 done
 
-# 處理所有 KK-1 PDF
+# 處理所有 KK-1 PDF（使用 V3 版本）
 for file in KK-*.pdf; do
-    python parse_kk1.py "$file"
+    python parse_kk1_v3.py "$file"
 done
 ```
 
@@ -113,7 +126,9 @@ done
 - `template_401.json` - 401 JSON 結構模板示例
 
 ### KK-1 表單相關（新增）
-- `parse_kk1.py` - KK-1 表單解析腳本
+- `parse_kk1_v3.py` - KK-1 表單解析腳本 V3（推薦，支援 OCR + 改進解析）
+- `parse_kk1_v2.py` - KK-1 表單解析腳本 V2（改進解析邏輯）
+- `parse_kk1.py` - KK-1 表單解析腳本 V1（基礎版 + OCR 支援）
 - `KK-1.json` - KK-1 JSON 結構示例（實際數據）
 - `KK-1_README.md` - KK-1 詳細說明文件
 
@@ -145,17 +160,24 @@ parser.save_json("output.json")
 ### 在 Python 程式碼中使用 KK-1 解析器（新增）
 
 ```python
-from parse_kk1 import FormKK1Parser
+# 推薦使用 V3 版本
+from parse_kk1_v3 import FormKK1ParserV3
 
-# 創建解析器
-parser = FormKK1Parser("KK-1.pdf")
+# 創建解析器（自動啟用 OCR 支援）
+parser = FormKK1ParserV3("KK-1.pdf")
 
 # 解析 PDF
 data = parser.parse()
 
 # 訪問數據
 print(f"扣繳單位: {data['基本資訊']['名稱']}")
-print(f"合計扣繳稅額: {data['合計']['扣繳稅額']:,} 元")
+print(f"個人合計: {data['合計']['個人']['給付總額']:,} 元")
+print(f"非個人合計: {data['合計']['非個人']['給付總額']:,} 元")
+print(f"總扣繳稅額: {data['合計']['總計']['扣繳稅額']:,} 元")
+
+# 遍歷所得項目
+for item in data['所得項目']:
+    print(f"{item['所得類別']}: 給付總額 {item['個人']['給付總額'] + item['非個人']['給付總額']:,} 元")
 
 # 保存為 JSON
 parser.save_json("output.json")
@@ -182,9 +204,16 @@ for pdf_file in glob.glob("*.pdf"):
 
 ## 注意事项
 
+### 401 表單
 1. PDF 必须是可提取文本的格式（不支持扫描版图片 PDF）
 2. 如果是扫描版 PDF，需要先进行 OCR 处理
 3. 正则表达式根据标准 401 表单格式编写，如果表单格式有变化可能需要调整
+
+### KK-1 表單
+1. **推薦使用 `parse_kk1_v3.py`**，支援文本型和掃描版 PDF
+2. 掃描版 PDF 需要安裝 OCR 工具（Tesseract + pytesseract）
+3. OCR 識別可能有誤差，建議核對重要數據
+4. V3 版本結合了 OCR 支援和改進的解析邏輯，提供最佳解析效果
 
 ## 疑难排解
 
