@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}稅務資料自動化平台{% endblock %}</title>
+
+    <!-- Meta tags for JavaScript -->
+    <meta name="userEmail" content="{{ userEmail }}">
+    <meta name="userLocale" content="{{ userLocale }}">
+    <meta name="jwtToken" content="{{ jwtToken if jwtToken else '' }}">
+
+    <!-- Bootstrap 3 CSS -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+    <!-- Prevent sidebar flash on page load -->
+    <script>
+        (function() {
+            if (localStorage.getItem('tax_ocr_sidebar_collapsed') === 'true') {
+                document.documentElement.classList.add('sidebar-collapsed');
+            }
+        })();
+    </script>
+
+    {% block extra_css %}{% endblock %}
+</head>
+
+<body>
+    <div class="wrapper">
+        <!-- Sidebar -->
+        <nav class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <!-- Sidebar Toggle Button -->
+                <button class="sidebar-toggle" id="sidebarToggle" title="收起側邊欄">
+                    <span class="hamburger-icon">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </span>
+                </button>
+                <div class="sidebar-title">
+                    <h3>稅務資料自動化平台</h3>
+                    <p class="text-muted">Tax Document OCR System</p>
+                </div>
+            </div>
+
+            <ul class="sidebar-nav">
+                <li id="nav-dashboard">
+                    <a href="/dashboard" data-title="案件總覽">
+                        <i class="fa fa-file-text-o"></i>
+                        <span>1. 案件總覽</span>
+                    </a>
+                </li>
+                <li id="nav-upload" class="case-dependent">
+                    <a href="/upload" data-title="憑證上傳">
+                        <i class="fa fa-upload"></i>
+                        <span>2. 憑證上傳</span>
+                    </a>
+                </li>
+                <li id="nav-database" class="case-dependent">
+                    <a href="/database" data-title="資料庫">
+                        <i class="fa fa-database"></i>
+                        <span>3. 資料庫</span>
+                    </a>
+                </li>
+                <li id="nav-history" class="case-dependent">
+                    <a href="/history" data-title="紀錄與下載">
+                        <i class="fa fa-history"></i>
+                        <span>4. 紀錄與下載</span>
+                    </a>
+                </li>
+                {% if userRole and ('admin' in userRole or 'accountant' in userRole) %}
+                <li id="nav-permissions">
+                    <a href="/permissions" data-title="權限管理">
+                        <i class="fa fa-shield"></i>
+                        <span>權限管理</span>
+                    </a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+
+        <!-- Main Content Area with Top Navigation -->
+        <div class="main-content">
+            <!-- Top Navigation -->
+            <div class="top-nav-wrapper">
+                {% include "site_template/top_navigation.html" %}
+            </div>
+
+            <!-- Page Content -->
+            <div class="page-content">
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        <div class="flash-messages-container">
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible" role="alert">
+                                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                        <span aria-hidden="true">&times;</span>
+                                    </button>
+                                    {{ message }}
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                {% endwith %}
+                
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </div>
+
+    <!-- jQuery - 升級到 3.6.0 修復無限遞迴問題 -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <!-- Bootstrap 3 JS -->
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+
+    <!-- Custom JS -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+
+    <!-- Navigation Logic -->
+    <script>
+        $(document).ready(function () {
+            updateNavigationLinks();
+        });
+
+        // 更新導航連結，確保包含 case_id
+        function updateNavigationLinks() {
+            var caseId = getCurrentCaseId();
+            var currentPath = window.location.pathname;
+
+            // 沒有案件時，禁用需要案件的導航項目
+            if (!caseId) {
+                // 沒有案件時，禁用需要案件的導航項目
+                $('.case-dependent a').attr('href', '#').off('click').on('click', function (e) {
+                    e.preventDefault();
+                    if (window.showNotification) {
+                        window.showNotification('請先從案件總覽選擇一個案件', 'warning');
+                    } else {
+                        alert('請先從案件總覽選擇一個案件');
+                    }
+                    window.location.href = '/dashboard';
+                });
+
+                // 禁用導航項目（視覺提示）
+                $('.case-dependent').addClass('disabled');
+            } else {
+                // 有案件時，啟用導航項目並更新連結
+                $('#nav-upload a').attr('href', '/upload?case_id=' + caseId);
+                $('#nav-database a').attr('href', '/database?case_id=' + caseId);
+                $('#nav-history a').attr('href', '/history?case_id=' + caseId);
+
+                // 啟用導航項目
+                $('.case-dependent').removeClass('disabled');
+            }
+        }
+
+        // 取得當前案件 ID（從 URL 參數或 localStorage）
+        function getCurrentCaseId() {
+            // 優先從 URL 參數讀取
+            var urlParams = new URLSearchParams(window.location.search);
+            var caseId = urlParams.get('case_id');
+
+            // 檢查當前頁面是否需要案件 ID
+            var currentPath = window.location.pathname;
+            var requiresCaseId = currentPath.includes('/upload') ||
+                currentPath.includes('/database') ||
+                currentPath.includes('/history');
+
+            // verification 頁面比較特殊，可能從資料庫頁面帶 jobIds 進入，不一定有 case_id
+            var isVerificationPage = currentPath.includes('/verification');
+
+            if (!caseId && requiresCaseId) {
+                // 如果是需要案件 ID 的頁面但 URL 沒有參數，清除 localStorage
+                // 這防止使用者直接訪問頁面時使用舊的案件資料
+                localStorage.removeItem('selectedCase');
+                return null;
+            }
+
+            // verification 頁面的特殊處理：如果有 jobIds 參數，允許使用 localStorage
+            if (isVerificationPage && !caseId) {
+                var jobIds = urlParams.get('jobIds');
+                if (!jobIds) {
+                    // 如果 verification 頁面既沒有 case_id 也沒有 jobIds，才清除 localStorage
+                    localStorage.removeItem('selectedCase');
+                    return null;
+                }
+                // 如果有 jobIds，允許從 localStorage 讀取案件資訊
+            }
+
+            if (!caseId) {
+                // 從 localStorage 讀取
+                var storedCase = localStorage.getItem('selectedCase');
+                if (storedCase) {
+                    try {
+                        var caseData = JSON.parse(storedCase);
+                        caseId = caseData.id;
+                    } catch (e) {
+                        console.warn('localStorage 中的案件資料格式錯誤');
+                        localStorage.removeItem('selectedCase');
+                    }
+                }
+            }
+
+            return caseId;
+        }
+
+        // 全域函數：更新當前案件並刷新導航
+        window.updateCurrentCase = function (caseData) {
+            if (caseData) {
+                localStorage.setItem('selectedCase', JSON.stringify(caseData));
+            } else {
+                localStorage.removeItem('selectedCase');
+            }
+            updateNavigationLinks();
+        };
+
+        // Sidebar Toggle Functionality
+        (function() {
+            var toggleBtn = document.getElementById('sidebarToggle');
+            var storageKey = 'tax_ocr_sidebar_collapsed';
+
+            // Sync initial state (html class was set in head, update button title)
+            var isCollapsed = localStorage.getItem(storageKey) === 'true';
+            if (isCollapsed) {
+                toggleBtn.title = '展開側邊欄';
+            }
+
+            // Toggle handler
+            toggleBtn.addEventListener('click', function() {
+                document.documentElement.classList.toggle('sidebar-collapsed');
+                var collapsed = document.documentElement.classList.contains('sidebar-collapsed');
+                toggleBtn.title = collapsed ? '展開側邊欄' : '收起側邊欄';
+                localStorage.setItem(storageKey, collapsed);
+            });
+        })();
+    </script>
+
+    {% block extra_js %}{% endblock %}
+</body>
+
+</html>

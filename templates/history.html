@@ -1,0 +1,488 @@
+{% extends "base.html" %}
+
+{% block title %}紀錄與下載 - 稅務資料自動化平台{% endblock %}
+
+{% block content %}
+<div class="page-header-section">
+    <h1>紀錄與下載</h1>
+    <p>查看當前案件的歷史操作記錄並下載匯出檔案</p>
+</div>
+
+<!-- Case Info -->
+<div class="alert alert-info" id="case-info-section" style="display: none;">
+    <div class="row">
+        <div class="col-md-4">
+            <strong>當前案件：</strong> <span id="case-client-name"></span>
+        </div>
+        <div class="col-md-4">
+            <strong>年度：</strong> <span id="case-year"></span>
+        </div>
+        <div class="col-md-4">
+            <strong>統編：</strong> <span id="case-tax-id"></span>
+        </div>
+    </div>
+</div>
+
+<!-- Export History Table -->
+<div class="card">
+    <div class="card-header">
+        <div class="clearfix">
+            <div class="pull-left">
+                <h3>匯出歷史紀錄</h3>
+                <small class="text-muted">💡 提示：勾選下方表格最左側的方框，可批次下載或刪除多個匯出紀錄</small>
+            </div>
+            <div class="pull-right">
+                <span class="badge badge-info" id="selected-records-count" style="display: none; margin-right: 10px;">已選擇 0 筆</span>
+                <button class="btn btn-default btn-sm" id="batch-download-btn" style="display: none; margin-right: 5px;">
+                    <i class="fa fa-download"></i> 批次下載
+                </button>
+                <button class="btn btn-danger btn-sm" id="batch-delete-records-btn" style="display: none;">
+                    <i class="fa fa-trash"></i> 批次刪除
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th class="text-center" style="width: 50px; white-space: nowrap;">
+                            <input type="checkbox" id="select-all-records">
+                        </th>
+                        <th class="text-center" style="width: 120px; white-space: nowrap;">匯出日期</th>
+                        <th class="text-center" style="min-width: 200px; white-space: nowrap;">檔案名稱</th>
+                        <th class="text-center" style="min-width: 180px; white-space: nowrap;">
+                            <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                <span>申報書類型</span>
+                                <select class="form-control input-sm" id="filter-doctype" style="width: 120px;">
+                                    <option value="all">全部類型</option>
+                                    <option value="401">401</option>
+                                    <option value="403">403</option>
+                                    <option value="withholding_income">扣繳(收入)</option>
+                                    <option value="withholding_expense">扣繳(支出)</option>
+                                </select>
+                            </div>
+                        </th>
+                        <th class="text-center" style="width: 100px; white-space: nowrap;">匯出人員</th>
+                        <th class="text-center" style="width: 80px; white-space: nowrap;">筆數</th>
+                        <th class="text-center" style="width: 200px;">備註</th>
+                        <th class="text-center" style="width: 120px; white-space: nowrap;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="records-table">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Navigation -->
+<div class="clearfix" style="margin-top: 30px;">
+    <div class="pull-left">
+        <button class="btn btn-default" id="back-to-verification-btn" style="display: none;">
+            <i class="fa fa-arrow-left"></i> 返回校對頁面
+        </button>
+        <button class="btn btn-default" id="back-to-database-btn">
+            <i class="fa fa-arrow-left"></i> 返回資料庫
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// API Base URL - FastAPI 後端服務
+var API_BASE_URL = '/api';
+var allVersions = [];  // 所有版本記錄
+var selectedRecords = [];
+var currentCaseId = null;  // 當前案件 ID
+var currentCase = null;    // 當前案件資訊
+
+// 申報書類型映射（table_type → 中文名稱）
+var tableTypeLabels = {
+    '401': '營業人銷售額與稅額申報書（401）',
+    '403': '營業人銷售額與稅額申報書（403）',
+    'withholding_income': '各類所得扣繳憑單（收入）',
+    'withholding_expense': '各類所得扣繳憑單（支出）'
+};
+
+$(document).ready(function() {
+    // 取得當前案件 ID
+    currentCaseId = getCurrentCaseId();
+    
+    if (!currentCaseId) {
+        showNotification('請先從案件總覽選擇一個案件', 'warning');
+        setTimeout(function() {
+            window.location.href = '/dashboard';
+        }, 2000);
+        return;
+    }
+
+    // 載入案件資訊和版本記錄
+    loadCaseInfo();
+    loadVersions();
+
+    // 篩選器事件
+    $('#filter-doctype').on('change', function() {
+        renderRecords();
+    });
+
+    // 全選
+    $('#select-all-records').change(function() {
+        var checked = $(this).prop('checked');
+        if (checked) {
+            selectedRecords = getFilteredRecords().map(function(r) { return r.id; });
+        } else {
+            selectedRecords = [];
+        }
+        renderRecords();
+    });
+
+    // 批次下載
+    $('#batch-download-btn').click(function() {
+        batchDownloadVersions();
+    });
+
+    // 批次刪除
+    $('#batch-delete-records-btn').click(function() {
+        batchDeleteVersions();
+    });
+
+    // 返回按鈕
+    $('#back-to-database-btn').click(function() {
+        if (currentCaseId) {
+            window.location.href = '/database?case_id=' + currentCaseId;
+        } else {
+            window.location.href = '/dashboard';
+        }
+    });
+});
+
+// 取得當前案件 ID（從 URL 參數或 localStorage）
+function getCurrentCaseId() {
+    var urlParams = new URLSearchParams(window.location.search);
+    var caseId = urlParams.get('case_id');
+    
+    if (!caseId) {
+        // 從 localStorage 讀取
+        var storedCase = localStorage.getItem('selectedCase');
+        if (storedCase) {
+            try {
+                var caseData = JSON.parse(storedCase);
+                caseId = caseData.id;
+            } catch (e) {
+                console.warn('localStorage 中的案件資料格式錯誤');
+                localStorage.removeItem('selectedCase');
+            }
+        }
+    }
+    
+    return caseId;
+}
+
+// ============ API 調用函數 ============
+
+function loadCaseInfo() {
+    if (!currentCaseId) return;
+    
+    $.ajax({
+        url: API_BASE_URL + '/cases/' + currentCaseId,
+        method: 'GET',
+        success: function(caseData) {
+            currentCase = caseData;
+            showCaseInfo();
+        },
+        error: function(xhr, status, error) {
+            console.error('載入案件資訊失敗:', error);
+            showNotification('載入案件資訊失敗', 'danger');
+        }
+    });
+}
+
+function showCaseInfo() {
+    if (!currentCase) return;
+    
+    $('#case-client-name').text(currentCase.client_name);
+    $('#case-year').text(currentCase.year + ' 年度');
+    $('#case-tax-id').text(currentCase.tax_id);
+    $('#case-info-section').show();
+}
+
+// ============ API 調用函數 ============
+
+function loadVersions() {
+    if (!currentCaseId) return;
+    
+    showLoading();
+    $.ajax({
+        url: API_BASE_URL + '/versions/' + currentCaseId,
+        method: 'GET',
+        success: function(data) {
+            allVersions = data;
+            console.log('已載入 ' + allVersions.length + ' 筆版本記錄');
+            
+            // 🆕 檢查每個版本的 job_ids 是否有效
+            checkVersionJobsValidity(function() {
+                hideLoading();
+                renderRecords();
+            });
+        },
+        error: function(xhr, status, error) {
+            hideLoading();
+            console.error('載入版本記錄失敗:', error);
+            showNotification('載入歷史記錄失敗', 'danger');
+            allVersions = [];
+            renderRecords();
+        }
+    });
+}
+
+// 🆕 檢查版本的 job_ids 是否有效
+function checkVersionJobsValidity(callback) {
+    var checkPromises = [];
+    
+    allVersions.forEach(function(version) {
+        if (version.job_ids && version.job_ids.length > 0) {
+            // 檢查這些 job_ids 是否還存在
+            var promise = $.ajax({
+                url: API_BASE_URL + '/jobs?ids=' + version.job_ids.join(','),
+                method: 'GET'
+            }).then(function(jobs) {
+                // 如果找到的 jobs 數量少於 job_ids 數量，表示有檔案被刪除
+                version.hasInvalidJobs = jobs.length < version.job_ids.length;
+            }).catch(function() {
+                version.hasInvalidJobs = true;
+            });
+            
+            checkPromises.push(promise);
+        } else {
+            version.hasInvalidJobs = false;
+        }
+    });
+    
+    // 等待所有檢查完成
+    $.when.apply($, checkPromises).always(function() {
+        callback();
+    });
+}
+
+function deleteVersion(versionId) {
+    if (!confirm('確定要刪除此版本記錄嗎？此操作無法復原。')) {
+        return;
+    }
+
+    showLoading();
+    $.ajax({
+        url: API_BASE_URL + '/versions/' + versionId,
+        method: 'DELETE',
+        success: function(response) {
+            hideLoading();
+            showNotification('已刪除版本記錄', 'success');
+            loadVersions();  // 重新載入
+        },
+        error: function(xhr, status, error) {
+            hideLoading();
+            console.error('刪除版本記錄失敗:', error);
+            showNotification('刪除失敗，請稍後再試', 'danger');
+        }
+    });
+}
+
+function batchDeleteVersions() {
+    if (selectedRecords.length === 0) {
+        showNotification('請先選擇要刪除的記錄', 'warning');
+        return;
+    }
+
+    if (!confirm('確定要刪除選擇的 ' + selectedRecords.length + ' 筆記錄嗎？此操作無法復原。')) {
+        return;
+    }
+
+    showLoading();
+    var deletePromises = selectedRecords.map(function(versionId) {
+        return $.ajax({
+            url: API_BASE_URL + '/versions/' + versionId,
+            method: 'DELETE'
+        });
+    });
+
+    $.when.apply($, deletePromises).done(function() {
+        hideLoading();
+        showNotification('已刪除 ' + selectedRecords.length + ' 筆記錄', 'success');
+        selectedRecords = [];
+        loadVersions();
+    }).fail(function() {
+        hideLoading();
+        showNotification('部分記錄刪除失敗', 'danger');
+        loadVersions();
+    });
+}
+
+function downloadVersion(versionId) {
+    var version = allVersions.find(function(v) { return v.id === versionId; });
+    if (!version) {
+        showNotification('找不到該版本記錄', 'danger');
+        return;
+    }
+
+    showLoading();
+    // 下載 Excel 檔案
+    window.location.href = API_BASE_URL + '/versions/' + versionId + '/download';
+    setTimeout(function() {
+        hideLoading();
+        showNotification('已下載：' + version.file_name, 'success');
+    }, 1000);
+}
+
+function batchDownloadVersions() {
+    if (selectedRecords.length === 0) {
+        showNotification('請先選擇要下載的記錄', 'warning');
+        return;
+    }
+
+    showNotification('正在批次下載 ' + selectedRecords.length + ' 個檔案...', 'info');
+
+    selectedRecords.forEach(function(versionId, index) {
+        setTimeout(function() {
+            downloadVersion(versionId);
+        }, index * 500);  // 延遲下載避免同時觸發
+    });
+
+    selectedRecords = [];
+    renderRecords();
+}
+
+// ============ 渲染與篩選函數 ============
+
+function getFilteredRecords() {
+    var docTypeFilter = $('#filter-doctype').val();
+
+    return allVersions.filter(function(v) {
+        // 申報書類型篩選（使用 table_type）
+        return docTypeFilter === 'all' || v.table_type === docTypeFilter;
+    });
+}
+
+function renderRecords() {
+    var filtered = getFilteredRecords();
+
+    // 更新 UI 按鈕顯示
+    if (selectedRecords.length > 0) {
+        $('#selected-records-count').show().text('已選擇 ' + selectedRecords.length + ' 筆');
+        $('#batch-download-btn, #batch-delete-records-btn').show();
+    } else {
+        $('#selected-records-count').hide();
+        $('#batch-download-btn, #batch-delete-records-btn').hide();
+    }
+
+    if (filtered.length === 0) {
+        $('#records-table').html(
+            '<tr><td colspan="8" class="text-center" style="padding: 60px 0;">' +
+            '<i class="fa fa-file-o" style="font-size: 48px; color: #ccc;"></i>' +
+            '<p class="text-muted" style="margin-top: 15px;">沒有找到符合條件的記錄</p>' +
+            '</td></tr>'
+        );
+        return;
+    }
+
+    var html = '';
+    filtered.forEach(function(v) {
+        var isSelected = selectedRecords.includes(v.id);
+
+        // 格式化日期
+        var exportDate = v.created_at ? v.created_at.substring(0, 10) : '';
+
+        // 申報書類型標籤（使用 table_type）
+        var tableTypeLabel = tableTypeLabels[v.table_type] || v.table_type || '未知類型';
+
+        // 🆕 檢查版本是否有 job_ids（用於判斷是否可以重新開啟校對頁面）
+        var hasJobIds = v.job_ids && v.job_ids.length > 0;
+        var hasInvalidJobs = v.hasInvalidJobs === true;
+        
+        // 如果有無效的 jobs，禁用查看按鈕 - 改為小圖示按鈕
+        var viewButtonHtml = hasJobIds && !hasInvalidJobs
+            ? '<button class="btn btn-default btn-xs" onclick="viewVersion(' + v.id + ')" style="margin-right: 3px; padding: 2px 6px;" title="返回校對頁面編輯與查看">' +
+              '<i class="fa fa-pencil"></i></button>'
+            : '<button class="btn btn-default btn-xs" disabled title="此版本無法重新開啟（原始檔案已刪除）" style="margin-right: 3px; padding: 2px 6px;">' +
+              '<i class="fa fa-pencil"></i></button>';
+
+        // 🆕 只有在檔案真的被刪除時才顯示警告圖示
+        var warningIcon = hasInvalidJobs
+            ? '<i class="fa fa-exclamation-triangle text-warning" title="此版本的原始檔案已被刪除，無法查看頁面" style="margin-left: 5px; cursor: help;" data-toggle="tooltip" data-placement="top"></i>'
+            : '';
+
+        html += '<tr>' +
+                '<td class="text-center" style="white-space: nowrap;">' +
+                '<input type="checkbox" class="record-checkbox" data-id="' + v.id + '" ' +
+                (isSelected ? 'checked' : '') + '>' +
+                '</td>' +
+                '<td class="text-center" style="white-space: nowrap;">' +
+                '<i class="fa fa-clock-o" style="margin-right: 5px; color: #7f8c8d;"></i>' +
+                exportDate +
+                '</td>' +
+                '<td class="text-center" style="white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis;" title="' + (v.file_name || '未命名') + '">' +
+                '<i class="fa fa-file-text-o" style="margin-right: 5px; color: #3498db;"></i>' +
+                (v.file_name || '未命名') + warningIcon +
+                '</td>' +
+                '<td class="text-center" style="white-space: nowrap;">' +
+                '<span class="badge badge-default">' + tableTypeLabel + '</span>' +
+                '</td>' +
+                '<td class="text-center" style="white-space: nowrap;">' + (v.creator_name || '未知') + '</td>' +
+                '<td class="text-center" style="white-space: nowrap;">' +
+                '<span class="badge badge-info">' + (v.record_count || 0) + '</span>' +
+                '</td>' +
+                '<td class="text-center text-muted" style="word-wrap: break-word; max-width: 200px;">' + (v.notes || '') + '</td>' +
+                '<td class="text-center" style="white-space: nowrap;">' +
+                viewButtonHtml +
+                '<button class="btn btn-primary btn-xs" onclick="downloadVersion(' + v.id + ')" style="margin-right: 3px; padding: 2px 6px;" title="下載">' +
+                '<i class="fa fa-download"></i>' +
+                '</button>' +
+                '<button class="btn btn-danger btn-xs" onclick="deleteVersion(' + v.id + ')" style="padding: 2px 6px;" title="刪除">' +
+                '<i class="fa fa-trash"></i>' +
+                '</button>' +
+                '</td>' +
+                '</tr>';
+    });
+
+    $('#records-table').html(html);
+
+    // 初始化 tooltip
+    $('[data-toggle="tooltip"]').tooltip();
+
+    // 綁定 checkbox 事件
+    $('.record-checkbox').change(function() {
+        var id = parseInt($(this).data('id'));
+        if ($(this).prop('checked')) {
+            if (!selectedRecords.includes(id)) {
+                selectedRecords.push(id);
+            }
+        } else {
+            selectedRecords = selectedRecords.filter(function(recordId) { return recordId !== id; });
+        }
+        renderRecords();
+    });
+}
+
+function viewVersion(versionId) {
+    var version = allVersions.find(function(v) { return v.id === versionId; });
+
+    if (!version) {
+        showNotification('找不到該版本記錄', 'danger');
+        return;
+    }
+
+    showNotification('跳轉到校對頁面', 'info');
+
+    // 使用 job_ids 重新開啟校對頁面
+    if (version.job_ids && version.job_ids.length > 0) {
+        // 有 job_ids，使用 jobIds 參數開啟（可編輯模式）
+        var jobIdsParam = version.job_ids.join(',');
+        window.location.href = '/verification?case_id=' + version.case_id + '&jobIds=' + jobIdsParam + '&from_version=true';
+    } else {
+        // 沒有 job_ids，使用 version_id 參數開啟（唯讀模式）
+        window.location.href = '/verification?case_id=' + version.case_id + '&version_id=' + versionId;
+    }
+}
+</script>
+{% endblock %}

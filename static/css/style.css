@@ -1,0 +1,1305 @@
+/* Global Styles */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: #f8f9fa;
+    margin: 0;
+    padding: 0;
+}
+
+.wrapper {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* Sidebar Styles */
+.sidebar {
+    width: 260px;
+    background: linear-gradient(180deg, #2c3e50 0%, #34495e 100%);
+    color: #ecf0f1;
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    height: 100vh;
+    overflow-y: auto;
+    transition: width 0.3s ease;
+    z-index: 1000; /* 確保側邊欄在內容上方 */
+    left: 0;
+    top: 0;
+}
+
+.sidebar-header {
+    padding: 20px 15px;
+    border-bottom: 1px rgba(255,255,255,0.1) solid;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.sidebar-title {
+    overflow: hidden;
+    transition: opacity 0.2s ease, width 0.3s ease;
+    white-space: nowrap;
+}
+
+.sidebar-title h3 {
+    margin: 0 0 5px 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #fff;
+}
+
+.sidebar-title p {
+    margin: 0;
+    font-size: 12px;
+    color: rgba(255,255,255,0.6);
+}
+
+.sidebar-nav {
+    list-style: none;
+    padding: 15px 0;
+    margin: 0;
+    flex: 1;
+}
+
+.sidebar-nav li {
+    margin: 0;
+}
+
+.sidebar-nav li a {
+    display: flex;
+    align-items: center;
+    padding: 12px 20px;
+    color: rgba(255,255,255,0.7);
+    text-decoration: none;
+    transition: all 0.3s;
+}
+
+.sidebar-nav li a span {
+    transition: opacity 0.2s ease;
+    white-space: nowrap;
+}
+
+.sidebar-nav li a:hover {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+}
+
+.sidebar-nav li.active a {
+    background: #fff;
+    color: #2c3e50;
+    font-weight: 500;
+}
+
+.sidebar-nav li a i {
+    width: 20px;
+    margin-right: 12px;
+    font-size: 18px;
+}
+
+/* Sidebar Toggle Button - Hamburger Menu */
+.sidebar-toggle {
+    width: 36px;
+    height: 36px;
+    background: rgba(255,255,255,0.1);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.3s ease;
+    flex-shrink: 0;
+}
+
+.sidebar-toggle:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+.sidebar-toggle:focus {
+    outline: none;
+}
+
+.hamburger-icon {
+    width: 18px;
+    height: 14px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.hamburger-icon span {
+    display: block;
+    width: 100%;
+    height: 2px;
+    background: #fff;
+    border-radius: 1px;
+    transition: all 0.3s ease;
+}
+
+/* Sidebar Collapsed State - support both html.sidebar-collapsed and .wrapper.sidebar-collapsed */
+.sidebar-collapsed .sidebar,
+html.sidebar-collapsed .sidebar {
+    width: 70px;
+}
+
+.sidebar-collapsed .sidebar-title,
+html.sidebar-collapsed .sidebar-title {
+    opacity: 0;
+    width: 0;
+    overflow: hidden;
+}
+
+.sidebar-collapsed .sidebar-header,
+html.sidebar-collapsed .sidebar-header {
+    padding: 20px 17px;
+    justify-content: center;
+}
+
+.sidebar-collapsed .sidebar-nav li a,
+html.sidebar-collapsed .sidebar-nav li a {
+    justify-content: center;
+    padding: 12px 10px;
+}
+
+.sidebar-collapsed .sidebar-nav li a span,
+html.sidebar-collapsed .sidebar-nav li a span {
+    opacity: 0;
+    width: 0;
+    overflow: hidden;
+}
+
+.sidebar-collapsed .sidebar-nav li a i,
+html.sidebar-collapsed .sidebar-nav li a i {
+    margin-right: 0;
+    font-size: 20px;
+}
+
+.sidebar-collapsed .main-content,
+html.sidebar-collapsed .main-content {
+    margin-left: 70px;
+}
+
+/* 確保收起狀態下也不會有內容重疊 */
+.sidebar-collapsed .page-content,
+html.sidebar-collapsed .page-content {
+    overflow-x: hidden;
+}
+
+/* Tooltip for collapsed sidebar items */
+.sidebar-collapsed .sidebar-nav li,
+html.sidebar-collapsed .sidebar-nav li {
+    position: relative;
+}
+
+.sidebar-collapsed .sidebar-nav li a::after,
+html.sidebar-collapsed .sidebar-nav li a::after {
+    content: attr(data-title);
+    position: absolute;
+    left: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    background: #2c3e50;
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease;
+    margin-left: 10px;
+    z-index: 1000;
+}
+
+.sidebar-collapsed .sidebar-nav li a:hover::after,
+html.sidebar-collapsed .sidebar-nav li a:hover::after {
+    opacity: 1;
+    visibility: visible;
+}
+
+.sidebar-footer {
+    padding: 20px;
+    border-top: 1px rgba(255,255,255,0.1) solid;
+}
+
+.sidebar-footer .user-info p {
+    margin: 0 0 8px 0;
+    font-size: 12px;
+}
+
+.sidebar-footer #user-select {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: #fff;
+    font-size: 13px;
+}
+
+.sidebar-footer #user-select option {
+    background: #2c3e50;
+    color: #fff;
+}
+
+/* Main Content */
+.main-content {
+    flex: 1;
+    margin-left: 260px;
+    min-height: 100vh;
+    transition: margin-left 0.3s ease;
+    min-width: 0; /* 允許內容收縮 */
+    overflow-x: auto; /* 在主內容區域內處理水平滾動 */
+}
+
+/* Top Navigation Wrapper */
+.top-nav-wrapper {
+    background: #fff;
+    border-bottom: 1px solid #e9ecef;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.top-nav-wrapper .nav_menu {
+    margin: 0;
+    padding: 0 20px;
+}
+
+.top-nav-wrapper .nav_menu nav {
+    background: #fff;
+    min-height: 60px;
+}
+
+.top-nav-wrapper .nav_menu .nav.navbar-nav > li > a {
+    color: #2c3e50;
+}
+
+.top-nav-wrapper .nav_menu .nav.navbar-nav > li > a:hover {
+    background: #f8f9fa;
+}
+
+.top-nav-wrapper .user-profile img {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.top-nav-wrapper #menu_toggle {
+    display: none;
+}
+
+/* Page Content */
+.page-content {
+    flex: 1;
+    padding: 30px;
+    width: 100%;
+}
+
+/* 表格容器優化 - 充分利用可用空間 */
+.table-container {
+    width: 100%;
+    overflow-x: auto;
+    position: relative; /* 確保滾動容器定位正確 */
+}
+
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    position: relative;
+}
+
+/* 確保表格能夠充分展開 */
+.table {
+    width: 100%;
+    min-width: max-content;
+}
+
+/* 防止表格內容與側邊欄重疊 */
+.page-content {
+    position: relative;
+    overflow-x: hidden; /* 防止頁面級別的水平滾動 */
+}
+
+/* 表格滾動指示器 */
+.table-container {
+    position: relative;
+}
+
+.table-container::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 20px;
+    height: 100%;
+    background: linear-gradient(to left, rgba(248, 249, 250, 0.8), transparent);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.table-container.has-scroll::after {
+    opacity: 1;
+}
+
+/* 改善表格滾動體驗 */
+.table-responsive {
+    scrollbar-width: thin;
+    scrollbar-color: #dee2e6 #f8f9fa;
+}
+
+.table-responsive::-webkit-scrollbar {
+    height: 8px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background: #dee2e6;
+    border-radius: 4px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb:hover {
+    background: #adb5bd;
+}
+
+/* 大螢幕優化 - 當螢幕寬度足夠時，表格可以更好地展開 */
+@media (min-width: 1400px) {
+    .page-content {
+        padding: 30px 40px;
+    }
+    
+    .table-container {
+        margin: 0 -10px;
+    }
+}
+
+@media (min-width: 1600px) {
+    .page-content {
+        padding: 30px 50px;
+    }
+    
+    .table-container {
+        margin: 0 -20px;
+    }
+}
+
+/* Page Header */
+.page-header-section {
+    margin-bottom: 30px;
+}
+
+.page-header-section h1 {
+    margin: 0 0 8px 0;
+    font-size: 32px;
+    font-weight: 700;
+    color: #2c3e50;
+}
+
+.page-header-section p {
+    margin: 0;
+    color: #7f8c8d;
+    font-size: 15px;
+}
+
+/* Cards */
+.card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin-bottom: 25px;
+    border: none;
+}
+
+.card-header {
+    padding: 20px 25px;
+    border-bottom: 1px solid #e9ecef;
+    background: #fff;
+    border-radius: 8px 8px 0 0;
+}
+
+.card-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.card-body {
+    padding: 25px;
+}
+
+/* Stats Cards */
+.stats-card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 25px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.stats-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.stats-card .stats-icon {
+    font-size: 32px;
+    color: #3498db;
+}
+
+.stats-card .stats-number {
+    font-size: 32px;
+    font-weight: 700;
+    color: #2c3e50;
+    margin: 10px 0 5px 0;
+}
+
+.stats-card .stats-label {
+    color: #7f8c8d;
+    font-size: 14px;
+}
+
+/* Case Cards Container */
+#case-cards {
+    display: flex;
+    flex-wrap: wrap;
+    margin-left: -15px;
+    margin-right: -15px;
+}
+
+#case-cards .col-md-4 {
+    display: flex;
+    padding-left: 15px;
+    padding-right: 15px;
+    margin-bottom: 20px;
+}
+
+/* 響應式調整 */
+@media (max-width: 991px) {
+    #case-cards .col-md-4 {
+        flex: 0 0 50%; /* 在中等螢幕上顯示 2 列 */
+        max-width: 50%;
+    }
+}
+
+@media (max-width: 767px) {
+    #case-cards .col-md-4 {
+        flex: 0 0 100%; /* 在小螢幕上顯示 1 列 */
+        max-width: 100%;
+    }
+}
+
+/* Case Cards */
+.case-card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    cursor: pointer;
+    transition: all 0.3s;
+    border: 2px solid transparent;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.case-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    border-color: #3498db;
+}
+
+.case-card .case-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 12px;
+}
+
+.case-card .case-info {
+    color: #7f8c8d;
+    font-size: 13px;
+    margin-bottom: 15px;
+}
+
+.case-card .progress {
+    height: 8px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+}
+
+.case-card .progress-label {
+    font-size: 12px;
+    color: #7f8c8d;
+    margin-bottom: 5px;
+}
+
+/* Badges */
+.badge {
+    padding: 5px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.badge-success {
+    background: #27ae60;
+    color: #fff;
+}
+
+.badge-warning {
+    background: #f39c12;
+    color: #fff;
+}
+
+.badge-info {
+    background: #3498db;
+    color: #fff;
+}
+
+.badge-default {
+    background: #95a5a6;
+    color: #fff;
+}
+
+/* Buttons */
+.btn {
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: #3498db;
+    border-color: #3498db;
+}
+
+.btn-primary:hover {
+    background: #2980b9;
+    border-color: #2980b9;
+}
+
+.btn-success {
+    background: #27ae60;
+    border-color: #27ae60;
+}
+
+.btn-success:hover {
+    background: #229954;
+    border-color: #229954;
+}
+
+/* Tables */
+.table {
+    background: #fff;
+}
+
+.table > thead > tr > th {
+    background: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+    font-weight: 600;
+    color: #2c3e50;
+    padding: 15px;
+}
+
+.table > tbody > tr > td {
+    padding: 15px;
+    vertical-align: middle;
+}
+
+.table > tbody > tr:hover {
+    background: #f8f9fa;
+}
+
+/* Forms */
+.form-control {
+    border-radius: 6px;
+    border: 1px solid #ddd;
+    padding: 10px 15px;
+    font-size: 14px;
+}
+
+select.form-control {
+    height: 36px;
+    padding: 8px 15px;
+}
+
+.form-control:focus {
+    border-color: #3498db;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+/* Upload Area */
+.upload-area {
+    border: 2px dashed #ddd;
+    border-radius: 8px;
+    padding: 60px 20px;
+    text-align: center;
+    background: #f8f9fa;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.upload-area:hover {
+    border-color: #3498db;
+    background: #e8f4f8;
+}
+
+.upload-area.active {
+    border-color: #3498db;
+    background: #e8f4f8;
+}
+
+.upload-area i {
+    font-size: 48px;
+    color: #7f8c8d;
+    margin-bottom: 15px;
+}
+
+/* Alerts */
+.alert {
+    border-radius: 6px;
+    border: none;
+    padding: 15px 20px;
+}
+
+.alert-info {
+    background: #e8f4f8;
+    color: #2980b9;
+}
+
+.alert-success {
+    background: #d5f4e6;
+    color: #229954;
+}
+
+.alert-warning {
+    background: #fef5e7;
+    color: #d68910;
+}
+
+.alert-danger {
+    background: #fadbd8;
+    color: #c0392b;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .sidebar {
+        width: 100%;
+        height: auto;
+        position: relative;
+    }
+
+    .main-content {
+        margin-left: 0;
+    }
+
+    .top-nav-wrapper .nav_menu {
+        padding: 0 10px;
+    }
+
+    .page-content {
+        padding: 15px;
+    }
+
+    .sidebar-toggle {
+        display: none;
+    }
+
+    .sidebar-collapsed .sidebar {
+        width: 100%;
+    }
+
+    .sidebar-collapsed .main-content {
+        margin-left: 0;
+    }
+
+    .sidebar-collapsed .sidebar-title {
+        opacity: 1;
+        width: auto;
+    }
+
+    .sidebar-collapsed .sidebar-nav li a span {
+        opacity: 1;
+        width: auto;
+    }
+
+    .sidebar-collapsed .sidebar-nav li a {
+        justify-content: flex-start;
+        padding: 12px 20px;
+    }
+
+    .sidebar-collapsed .sidebar-nav li a i {
+        margin-right: 12px;
+    }
+}
+
+/* Duplicate Warning Popover Styles */
+.popover {
+    max-width: 450px !important;
+    border: none !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15) !important;
+    border-radius: 12px !important;
+    background: #fff !important;
+}
+
+.popover-title {
+    background: #fff !important;
+    border-bottom: 1px solid #e9ecef !important;
+    border-radius: 12px 12px 0 0 !important;
+    padding: 15px 20px !important;
+    font-size: 16px !important;
+}
+
+.popover-content {
+    padding: 15px 20px !important;
+    font-size: 14px !important;
+    line-height: 1.6 !important;
+}
+
+.popover.left > .arrow:after {
+    border-left-color: #fff !important;
+}
+
+.popover.right > .arrow:after {
+    border-right-color: #fff !important;
+}
+
+.popover.top > .arrow:after {
+    border-top-color: #fff !important;
+}
+
+.popover.bottom > .arrow:after {
+    border-bottom-color: #fff !important;
+}
+
+/* Duplicate Popover Content Styles */
+.duplicate-popover-content {
+    padding: 10px 0;
+}
+
+.duplicate-description {
+    margin: 0 0 15px 0 !important;
+    font-size: 15px !important;
+    color: #5a6268 !important;
+}
+
+.duplicate-current-file {
+    background: #fff3cd !important;
+    border: 2px solid #ffc107 !important;
+    border-radius: 6px !important;
+    padding: 15px !important;
+    margin-bottom: 12px !important;
+}
+
+.duplicate-files-list {
+    background: #f8d7da !important;
+    border: 2px solid #f5c6cb !important;
+    border-radius: 6px !important;
+    padding: 15px !important;
+}
+
+.duplicate-label {
+    margin: 0 0 8px 0 !important;
+    font-weight: bold !important;
+    font-size: 14px !important;
+}
+
+.duplicate-current-file .duplicate-label {
+    color: #856404 !important;
+}
+
+.duplicate-files-list .duplicate-label {
+    color: #721c24 !important;
+}
+
+.duplicate-filename {
+    margin: 5px 0 0 0 !important;
+    font-size: 15px !important;
+}
+
+.duplicate-current-file .duplicate-filename {
+    color: #d68910 !important;
+}
+
+.duplicate-files-list .duplicate-filename {
+    color: #c0392b !important;
+}
+
+.duplicate-warning-icon {
+    color: #f39c12 !important;
+    margin-left: 8px !important;
+    cursor: pointer !important;
+    animation: pulse 2s infinite;
+    transition: transform 0.2s;
+}
+
+.duplicate-warning-icon:hover {
+    transform: scale(1.2);
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+/* Disabled Navigation Items */
+.sidebar-nav li.disabled a {
+    color: rgba(255,255,255,0.3) !important;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.sidebar-nav li.disabled a:hover {
+    background: none !important;
+    color: rgba(255,255,255,0.3) !important;
+}
+
+/* Database Table Header Filters */
+.table > thead > tr > th div {
+    white-space: nowrap;
+}
+
+.table > thead > tr > th .form-control {
+    font-size: 12px;
+    height: 28px;
+    padding: 4px 8px;
+}
+
+.table > thead > tr > th .btn-xs {
+    padding: 4px 8px;
+    font-size: 12px;
+    line-height: 1.2;
+    border-radius: 3px;
+    transition: all 0.2s ease;
+}
+
+.table > thead > tr > th .btn-xs:hover {
+    transform: scale(1.05);
+}
+
+.table > thead > tr > th .btn-primary {
+    background-color: #3498db;
+    border-color: #3498db;
+}
+
+.table > thead > tr > th .btn-warning {
+    background-color: #f39c12;
+    border-color: #f39c12;
+}
+
+/* Flash Messages Styles */
+.flash-messages-container {
+    margin-bottom: 20px;
+}
+
+.flash-messages-container .alert {
+    margin-bottom: 10px;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.flash-messages-container .alert-danger {
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+    color: #721c24;
+}
+
+.flash-messages-container .alert-success {
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+    color: #155724;
+}
+
+.flash-messages-container .alert-warning {
+    background-color: #fff3cd;
+    border-color: #ffeaa7;
+    color: #856404;
+}
+
+.flash-messages-container .alert-info {
+    background-color: #d1ecf1;
+    border-color: #bee5eb;
+    color: #0c5460;
+}
+
+/* Support Tickets Table Styles */
+#ticketsTable {
+    background: #fff;
+    border-collapse: separate;
+    border-spacing: 0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+#ticketsTable thead th {
+    background: #f8f9fa;
+    color: #2c3e50;
+    font-weight: 600;
+    text-align: center;
+    padding: 18px 15px;
+    border-bottom: 2px solid #dee2e6;
+    border-right: 1px solid #dee2e6;
+    font-size: 14px;
+}
+
+#ticketsTable thead th:last-child {
+    border-right: none;
+}
+
+#ticketsTable thead th:first-child {
+    border-top-left-radius: 8px;
+}
+
+#ticketsTable thead th:last-child {
+    border-top-right-radius: 8px;
+}
+
+#ticketsTable tbody tr {
+    transition: all 0.2s ease;
+    border-bottom: 1px solid #dee2e6;
+}
+
+#ticketsTable tbody tr:hover {
+    background: #f8f9fa;
+}
+
+#ticketsTable tbody tr:last-child {
+    border-bottom: none;
+}
+
+#ticketsTable tbody td {
+    padding: 18px 15px;
+    vertical-align: middle;
+    border-right: 1px solid #e9ecef;
+}
+
+#ticketsTable tbody td:last-child {
+    border-right: none;
+}
+
+/* 工單編號樣式 */
+#ticketsTable tbody td:first-child strong {
+    color: #3498db;
+    font-weight: 700;
+    font-size: 15px;
+}
+
+/* 徽章樣式美化 */
+.badge {
+    padding: 6px 12px;
+    border-radius: 15px;
+    font-size: 12px;
+    font-weight: 500;
+    display: inline-block;
+    min-width: 60px;
+    text-align: center;
+}
+
+.badge-dark {
+    background: #2c3e50;
+    color: #fff;
+}
+
+.badge-danger {
+    background: #e74c3c;
+    color: #fff;
+}
+
+.badge-warning {
+    background: #f39c12;
+    color: #fff;
+}
+
+.badge-info {
+    background: #3498db;
+    color: #fff;
+}
+
+.badge-primary {
+    background: #3498db;
+    color: #fff;
+}
+
+.badge-success {
+    background: #27ae60;
+    color: #fff;
+}
+
+.badge-secondary {
+    background: #95a5a6;
+    color: #fff;
+}
+
+/* 狀態和優先級欄位居中 */
+#ticketsTable tbody td:nth-child(4),
+#ticketsTable tbody td:nth-child(5) {
+    text-align: center;
+}
+
+/* 時間欄位樣式 */
+#ticketsTable tbody td:nth-child(6),
+#ticketsTable tbody td:nth-child(7) {
+    font-size: 13px;
+    color: #7f8c8d;
+    text-align: center;
+}
+
+/* 操作按鈕樣式 */
+#ticketsTable tbody td:last-child {
+    text-align: center;
+}
+
+#ticketsTable .btn-sm {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-weight: 500;
+    font-size: 12px;
+    transition: all 0.2s ease;
+}
+
+#ticketsTable .btn-info {
+    background: #3498db;
+    border-color: #3498db;
+    color: #fff;
+}
+
+#ticketsTable .btn-info:hover {
+    background: #2980b9;
+    border-color: #2980b9;
+}
+
+/* Support Tickets Panel Styles */
+.x_panel {
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    border-radius: 8px;
+    border: none;
+    margin-bottom: 30px;
+    overflow: hidden;
+}
+
+.x_title {
+    background: #f8f9fa;
+    padding: 25px 30px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.x_title h2 {
+    color: #2c3e50;
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+}
+
+.x_title h2 i {
+    margin-right: 10px;
+    color: #3498db;
+    font-size: 18px;
+}
+
+.x_content {
+    padding: 30px;
+    background: #fff;
+}
+
+/* Support Tickets Page Layout */
+.right_col {
+    padding: 30px;
+    background: #f8f9fa;
+}
+
+.page-title {
+    margin-bottom: 30px;
+    padding: 25px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.page-title .title_left {
+    flex: 1;
+}
+
+.page-title .title_left h3 {
+    color: #2c3e50;
+    font-size: 24px;
+    font-weight: 700;
+    margin: 0;
+}
+
+.page-title .title_right {
+    display: flex;
+    gap: 10px;
+}
+
+.page-title .title_right .btn {
+    border-radius: 6px;
+    padding: 10px 20px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.page-title .title_right .btn-primary {
+    background: #2c5aa0;
+    border-color: #2c5aa0;
+    color: #fff;
+}
+
+.page-title .title_right .btn-primary:hover {
+    background: #1e3f73;
+    border-color: #1e3f73;
+}
+
+.page-title .title_right .btn-info {
+    background: #5bc0de;
+    border-color: #5bc0de;
+    color: #fff;
+}
+
+.page-title .title_right .btn-info:hover {
+    background: #31b0d5;
+    border-color: #31b0d5;
+}
+
+/* DataTables 美化 */
+.dataTables_wrapper .dataTables_length,
+.dataTables_wrapper .dataTables_filter,
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_paginate {
+    margin-bottom: 15px;
+}
+
+.dataTables_wrapper .dataTables_filter {
+    float: right;
+    text-align: right;
+}
+
+.dataTables_wrapper .dataTables_filter label {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.dataTables_wrapper .dataTables_filter input {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 8px 16px;
+    margin-left: 8px;
+    transition: all 0.2s ease;
+}
+
+.dataTables_wrapper .dataTables_filter input:focus {
+    border-color: #3498db;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+    outline: none;
+}
+
+.dataTables_wrapper .dataTables_length {
+    float: left;
+}
+
+.dataTables_wrapper .dataTables_length select {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 6px 12px;
+    margin: 0 8px;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+    padding: 8px 12px;
+    margin: 0 2px;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+    background: #fff;
+    color: #495057;
+    transition: all 0.2s ease;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+    background: #3498db;
+    color: #fff;
+    border-color: #3498db;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.current {
+    background: #3498db;
+    color: #fff;
+    border-color: #3498db;
+}
+
+/* Fix DataTables pagination button hover alignment issue */
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+    padding: 4px 8px !important;
+    margin: 0 2px !important;
+    border: 1px solid #ddd !important;
+    background: #fff !important;
+    color: #333 !important;
+    cursor: pointer;
+    display: inline-block;
+    min-width: 28px;
+    text-align: center;
+    box-sizing: border-box;
+    position: relative;
+    font-size: 13px;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+    background: #3498db !important;
+    color: #fff !important;
+    border-color: #3498db !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.current,
+.dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
+    background: #3498db !important;
+    color: #fff !important;
+    border-color: #3498db !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled,
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled:hover {
+    background: #f8f9fa !important;
+    color: #6c757d !important;
+    border-color: #dee2e6 !important;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* Ensure proper spacing and alignment for pagination container */
+.dataTables_wrapper .dataTables_paginate {
+    padding-top: 0.5em;
+    text-align: right;
+}
+
+/* Fix for pagination buttons alignment */
+.dataTables_wrapper .dataTables_paginate .pagination {
+    margin: 0;
+    white-space: nowrap;
+}

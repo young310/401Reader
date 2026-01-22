@@ -1,0 +1,408 @@
+{% extends "base.html" %}
+
+{% block title %}案件總覽 - 稅務資料自動化平台{% endblock %}
+
+{% block content %}
+<div class="page-header-section">
+    <h1>案件總覽</h1>
+    <p>管理所有查帳案件</p>
+</div>
+
+<!-- Search and Filter -->
+<div class="card">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="input-group">
+                    <span class="input-group-addon"><i class="fa fa-search"></i></span>
+                    <input type="text" class="form-control" id="search-input" placeholder="搜尋客戶名稱、客戶編碼或統一編號...">
+                </div>
+            </div>
+            <div class="col-md-4">
+                <select class="form-control" id="year-filter">
+                    <option value="all">全部年度</option>
+                    <!-- 動態生成年份選項 -->
+                </select>
+            </div>
+            <div class="col-md-2">
+                {% if userRole and 'admin' in userRole.lower() %}
+                <button class="btn btn-primary btn-block" data-toggle="modal" data-target="#createCaseModal">
+                    <i class="fa fa-plus"></i> 建立新案件
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Case Cards -->
+<div class="row" id="case-cards">
+    <!-- Cards will be loaded here -->
+</div>
+
+<!-- Create Case Modal -->
+<div class="modal fade" id="createCaseModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+                <h4 class="modal-title">建立新案件</h4>
+            </div>
+            <div class="modal-body">
+                <form id="create-case-form">
+                    <div class="form-group">
+                        <label>客戶名稱 *</label>
+                        <input type="text" class="form-control" id="client-name" placeholder="請輸入客戶名稱" required>
+                    </div>
+                    <div class="form-group">
+                        <label>客戶編碼(6碼) *</label>
+                        <input type="text" class="form-control" id="client-code" maxlength="6" placeholder="請輸入客戶編碼（例如：ABC123）" required>
+                        <small class="text-muted">格式：3位英文字母 + 3位數字（例如：ABC123）</small>
+                    </div>
+                    <div class="form-group">
+                        <label>統一編號 *</label>
+                        <input type="text" class="form-control" id="tax-id" maxlength="8" placeholder="請輸入8位數統一編號" required>
+                    </div>
+                    <div class="form-group">
+                        <label>年度 *</label>
+                        <select class="form-control" id="year" required>
+                            <!-- 動態生成年份選項（當前年份 ± 3 年） -->
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="create-case-btn">建立案件</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteCaseModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-sm" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+                <h4 class="modal-title">確認刪除案件</h4>
+            </div>
+            <div class="modal-body">
+                <p>此操作將永久刪除該案件及其所有相關資料，此操作無法復原。確定要繼續嗎？</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-danger" id="confirm-delete-btn">確認刪除</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// API Base URL - Flask API 後端服務（同源請求，不需要 CORS）
+var API_BASE_URL = '/api';
+
+var allCases = [];
+var selectedYear = 'all';
+var caseToDelete = null;
+
+// 清除當前案件選擇狀態
+function clearCurrentCaseSelection() {
+    // 清除 localStorage 中的案件資料
+    localStorage.removeItem('selectedCase');
+    
+    // 更新導航連結（如果 updateCurrentCase 函數存在）
+    if (window.updateCurrentCase) {
+        window.updateCurrentCase(null);
+    }
+    
+    console.log('已清除案件選擇狀態');
+}
+
+$(document).ready(function() {
+    // 清除當前案件選擇狀態
+    clearCurrentCaseSelection();
+    
+    // 初始化建立案件表單的年份下拉選單（當前年份 ± 3 年）
+    initCreateCaseYearOptions();
+
+    // 載入案件資料
+    loadAllCases();
+    
+    // 確保導航狀態正確更新
+    setTimeout(function() {
+        if (window.updateNavigationLinks) {
+            window.updateNavigationLinks();
+        }
+    }, 100);
+
+    // Year filter - 改為下拉選單
+    $('#year-filter').on('change', function() {
+        selectedYear = $(this).val();
+        loadCases();
+    });
+
+    // Search
+    $('#search-input').on('input', function() {
+        loadCases();
+    });
+
+    // Create case
+    $('#create-case-btn').click(function() {
+        var clientName = $('#client-name').val();
+        var clientCode = $('#client-code').val().toUpperCase();
+        var taxId = $('#tax-id').val();
+        var year = parseInt($('#year').val());
+
+        if (!clientName || !clientCode || !taxId) {
+            showNotification('請填寫所有必填欄位', 'danger');
+            return;
+        }
+
+        var pattern = /^[A-Z]{3}\d{3}$/;
+        if (!pattern.test(clientCode)) {
+            showNotification('客戶編碼格式錯誤，請輸入3位英文字母加3位數字', 'danger');
+            return;
+        }
+
+        // 呼叫 API 建立案件
+        createCase(clientName, clientCode, taxId, year);
+    });
+});
+
+// 初始化建立案件表單的年份選項（當前年份 ± 3 年）
+function initCreateCaseYearOptions() {
+    var currentYear = new Date().getFullYear();
+    var yearSelect = $('#year');
+    yearSelect.empty();
+
+    // 生成年份選項（從大到小：當前年份+3 到 當前年份-3）
+    for (var i = 3; i >= -3; i--) {
+        var year = currentYear + i;
+        var option = $('<option></option>').val(year).text(year);
+        if (i === 0) {
+            option.attr('selected', 'selected'); // 預設選擇當前年份
+        }
+        yearSelect.append(option);
+    }
+}
+
+// 更新年份篩選下拉選單（從資料庫案件中動態抓取年份）
+function updateYearFilterOptions() {
+    // 提取所有案件的年份（去重）
+    var years = [];
+    allCases.forEach(function(c) {
+        if (years.indexOf(c.year) === -1) {
+            years.push(c.year);
+        }
+    });
+
+    // 從大到小排序
+    years.sort(function(a, b) { return b - a; });
+
+    // 保存當前選擇的年份
+    var currentSelected = selectedYear;
+
+    // 重新生成選項
+    var yearFilter = $('#year-filter');
+    yearFilter.empty();
+
+    // 添加「全部年度」選項
+    yearFilter.append('<option value="all">全部年度</option>');
+
+    // 添加實際年份選項
+    years.forEach(function(year) {
+        yearFilter.append('<option value="' + year + '">' + year + ' 年度</option>');
+    });
+
+    // 恢復之前選擇的年份
+    yearFilter.val(currentSelected);
+}
+
+// 從 API 載入所有案件
+function loadAllCases() {
+    showLoading();
+    $.ajax({
+        url: API_BASE_URL + '/cases',
+        method: 'GET',
+        success: function(data) {
+            hideLoading();
+            allCases = data;
+            loadCases();
+        },
+        error: function(xhr, status, error) {
+            hideLoading();
+            console.error('載入案件失敗:', error);
+            showNotification('載入案件資料失敗，請重新整理頁面', 'danger');
+        }
+    });
+}
+
+function loadCases() {
+    // 更新年份篩選下拉選單（動態從資料庫案件中抓取）
+    updateYearFilterOptions();
+
+    var searchQuery = $('#search-input').val().toLowerCase();
+    var filtered = allCases.filter(function(c) {
+        var matchesSearch = searchQuery === '' ||
+            c.client_name.toLowerCase().includes(searchQuery) ||
+            (c.client_code && c.client_code.toLowerCase().includes(searchQuery)) ||
+            c.tax_id.includes(searchQuery);
+        var matchesYear = selectedYear === 'all' || c.year == selectedYear;
+        return matchesSearch && matchesYear;
+    });
+
+    // Render cards
+    var html = '';
+    var userRole = '{{ userRole }}';
+    var canDelete = userRole && userRole.toLowerCase().indexOf('admin') !== -1;
+    
+    filtered.forEach(function(c) {
+        // 刪除按鈕 HTML（只有 admin 和 accountant 可以看到）
+        var deleteButtonHtml = '';
+        if (canDelete) {
+            deleteButtonHtml = '<button class="btn btn-danger btn-xs" onclick="event.stopPropagation(); deleteCase(' + c.id + ')">' +
+                              '<i class="fa fa-trash"></i>' +
+                              '</button>';
+        }
+
+        html += '<div class="col-md-4">' +
+                '<div class="case-card" onclick="selectCase(' + c.id + ')">' +
+                '<div class="case-title">' + c.client_name + '</div>' +
+                '<div class="case-info">' +
+                '<i class="fa fa-calendar"></i> ' + c.year + ' 年度<br>' +
+                '<i class="fa fa-id-card"></i> 統編：' + c.tax_id + '<br>' +
+                '<i class="fa fa-code"></i> 客戶編碼：' + (c.client_code || 'N/A') +
+                '</div>' +
+                '<div class="clearfix" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">' +
+                '<div class="pull-left">' +
+                '<small class="text-muted">建立時間：' + formatDate(c.created_at) + '</small>' +
+                '</div>' +
+                '<div class="pull-right">' +
+                deleteButtonHtml +
+                '</div>' +
+                '</div>' +
+                '</div>' +
+                '</div>';
+    });
+
+    if (filtered.length === 0) {
+        html = '<div class="col-md-12"><div class="alert alert-info text-center">沒有找到符合條件的案件</div></div>';
+    }
+
+    $('#case-cards').html(html);
+}
+
+// 選擇案件並導航到上傳頁面
+function selectCase(caseId) {
+    // 儲存選擇的案件到 localStorage
+    var selectedCase = allCases.find(function(c) { return c.id === caseId; });
+    if (selectedCase) {
+        localStorage.setItem('selectedCase', JSON.stringify(selectedCase));
+        window.location.href = '/upload?case_id=' + caseId;
+    }
+}
+
+// 建立新案件
+function createCase(clientName, clientCode, taxId, year) {
+    // 前端權限檢查：只有 admin 可以建立案件
+    var userRole = '{{ userRole }}';
+    if (!userRole || userRole.toLowerCase().indexOf('admin') === -1) {
+        showNotification('您沒有權限建立案件', 'danger');
+        return;
+    }
+    
+    showLoading();
+    $.ajax({
+        url: API_BASE_URL + '/cases',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            client_name: clientName,
+            client_code: clientCode,
+            tax_id: taxId,
+            year: year
+        }),
+        success: function(newCase) {
+            hideLoading();
+            showNotification('已建立 ' + clientName + ' 的 ' + year + ' 年度案件', 'success');
+            $('#createCaseModal').modal('hide');
+            $('#create-case-form')[0].reset();
+
+            // 儲存新案件到 localStorage 並導航
+            localStorage.setItem('selectedCase', JSON.stringify(newCase));
+            window.location.href = '/upload?case_id=' + newCase.id;
+        },
+        error: function(xhr, status, error) {
+            hideLoading();
+            console.error('建立案件失敗:', error);
+            var errorMsg = '建立案件失敗';
+            if (xhr.responseJSON && xhr.responseJSON.detail) {
+                errorMsg += '：' + xhr.responseJSON.detail;
+            }
+            showNotification(errorMsg, 'danger');
+        }
+    });
+}
+
+function deleteCase(id) {
+    // 前端權限檢查：只有 admin 可以刪除案件
+    var userRole = '{{ userRole }}';
+    if (!userRole || userRole.toLowerCase().indexOf('admin') === -1) {
+        showNotification('您沒有權限刪除案件', 'danger');
+        return;
+    }
+    
+    caseToDelete = id;
+    $('#deleteCaseModal').modal('show');
+}
+
+$('#confirm-delete-btn').click(function() {
+    if (caseToDelete) {
+        var caseItem = allCases.find(function(c) { return c.id === caseToDelete; });
+        showLoading();
+
+        $.ajax({
+            url: API_BASE_URL + '/cases/' + caseToDelete,
+            method: 'DELETE',
+            success: function(response) {
+                hideLoading();
+                showNotification('已刪除 ' + caseItem.client_name + ' 的案件', 'success');
+                $('#deleteCaseModal').modal('hide');
+                caseToDelete = null;
+
+                // 重新載入案件列表
+                loadAllCases();
+            },
+            error: function(xhr, status, error) {
+                hideLoading();
+                console.error('刪除案件失敗:', error);
+                console.error('回應狀態:', xhr.status);
+                console.error('回應內容:', xhr.responseText);
+                
+                var errorMsg = '刪除案件失敗';
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    errorMsg += '：' + xhr.responseJSON.error;
+                } else if (xhr.responseText) {
+                    try {
+                        var errorData = JSON.parse(xhr.responseText);
+                        if (errorData.error) {
+                            errorMsg += '：' + errorData.error;
+                        }
+                    } catch (e) {
+                        errorMsg += '，請稍後再試';
+                    }
+                } else {
+                    errorMsg += '，請稍後再試';
+                }
+                
+                showNotification(errorMsg, 'danger');
+                $('#deleteCaseModal').modal('hide');
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

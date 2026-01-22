@@ -1,0 +1,177 @@
+<!-- Top Navigation for Tax AI OCR Standalone -->
+<nav class="top-nav">
+    <div class="nav-left">
+        <span class="current-case-info" id="currentCaseInfo">
+            <span id="caseLabel" style="display:none;">目前案件：</span>
+            <span id="caseName" class="case-name"></span>
+            <span id="noCaseMsg" style="color: #999;">請先選擇案件</span>
+        </span>
+    </div>
+    <div class="nav-right">
+        {% if current_user.is_authenticated %}
+        <div class="user-dropdown">
+            <a href="#" class="user-profile dropdown-toggle" data-toggle="dropdown">
+                <i class="fa fa-user-circle"></i>
+                <span class="username">{{ current_user.username }}</span>
+                {% set role_name = '' %}
+                {% if 'admin' in current_user.user_role %}
+                    {% set role_name = '系統管理員' %}
+                {% elif 'accountant' in current_user.user_role %}
+                    {% set role_name = '財會人員' %}
+                {% else %}
+                    {% set role_name = '一般使用者' %}
+                {% endif %}
+                <small class="user-role">({{ role_name }})</small>
+                <i class="fa fa-angle-down"></i>
+            </a>
+            <ul class="dropdown-menu dropdown-menu-right">
+                <li><a href="/auth/logout"><i class="fa fa-sign-out"></i> 登出</a></li>
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+</nav>
+
+<style>
+.top-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    background: #fff;
+    border-bottom: 1px solid #e5e5e5;
+}
+
+.nav-left {
+    flex: 1;
+}
+
+.current-case-info {
+    color: #666;
+    font-size: 14px;
+}
+
+.current-case-info .case-name {
+    font-weight: 600;
+    color: #333;
+}
+
+.nav-right {
+    display: flex;
+    align-items: center;
+}
+
+.user-dropdown {
+    position: relative;
+}
+
+.user-profile {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    color: #333;
+    text-decoration: none;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.user-profile:hover {
+    background: #f5f5f5;
+    text-decoration: none;
+    color: #333;
+}
+
+.user-profile .fa-user-circle {
+    font-size: 20px;
+    color: #666;
+}
+
+.user-profile .username {
+    font-weight: 500;
+}
+
+.user-profile .user-role {
+    color: #888;
+    font-size: 12px;
+}
+
+.dropdown-menu {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    min-width: 150px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    display: none;
+    z-index: 1000;
+}
+
+.dropdown-menu.show,
+.open .dropdown-menu {
+    display: block;
+}
+
+.dropdown-menu li {
+    list-style: none;
+}
+
+.dropdown-menu li a {
+    display: block;
+    padding: 10px 15px;
+    color: #333;
+    text-decoration: none;
+}
+
+.dropdown-menu li a:hover {
+    background: #f5f5f5;
+}
+
+.dropdown-menu li a .fa {
+    margin-right: 8px;
+}
+</style>
+
+<script>
+// Update current case info in top navigation
+$(document).ready(function() {
+    updateTopNavCaseInfo();
+});
+
+function updateTopNavCaseInfo() {
+    var caseId = typeof getCurrentCaseId === 'function' ? getCurrentCaseId() : null;
+    var caseLabelEl = document.getElementById('caseLabel');
+    var caseNameEl = document.getElementById('caseName');
+    var noCaseMsgEl = document.getElementById('noCaseMsg');
+
+    if (!caseLabelEl || !caseNameEl || !noCaseMsgEl) return;
+
+    if (caseId) {
+        var storedCase = localStorage.getItem('selectedCase');
+        var displayName = '案件 #' + caseId;
+
+        if (storedCase) {
+            try {
+                var caseData = JSON.parse(storedCase);
+                if (caseData.client_name) {
+                    displayName = caseData.client_name;
+                } else if (caseData.name) {
+                    displayName = caseData.name;
+                }
+            } catch (e) {
+                // Use default displayName
+            }
+        }
+
+        caseLabelEl.style.display = 'inline';
+        caseNameEl.textContent = displayName;
+        noCaseMsgEl.style.display = 'none';
+    } else {
+        caseLabelEl.style.display = 'none';
+        caseNameEl.textContent = '';
+        noCaseMsgEl.style.display = 'inline';
+    }
+}
+</script>

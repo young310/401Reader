@@ -1,0 +1,3954 @@
+{% extends "base.html" %}
+
+{% block title %}稅務資料 - 自動化平台{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 🆕 頁碼欄位樣式 */
+    .page-number-column {
+        font-weight: 500;
+        color: #555;
+    }
+
+    /* 🔧 新增按鈕列樣式 */
+    .add-record-row {
+        background: #f9f9f9 !important;
+    }
+
+    .add-record-row td {
+        padding: 8px !important;
+        text-align: left !important;
+    }
+
+    /* 小計列樣式 */
+    .subtotal-row {
+        background: #e8f4f8 !important;
+        font-weight: bold;
+        border-top: 2px solid #3498db;
+    }
+
+    .subtotal-row td {
+        background: #e8f4f8 !important;
+    }
+
+    /* 稅率欄位樣式 */
+    .tax-rate-column {
+        width: 80px;
+        text-align: center;
+    }
+
+    /* 🆕 項目下拉選單樣式 */
+    .item-name-cell {
+        padding: 4px !important;
+        vertical-align: middle !important;
+    }
+
+    .item-name-select {
+        border: 1px solid #f39c12 !important;
+        background: #fff9e6 !important;
+        font-size: 13px;
+        height: 30px;
+        padding: 4px 8px;
+    }
+
+    .item-name-select:focus {
+        border-color: #e67e22 !important;
+        box-shadow: 0 0 5px rgba(230, 126, 34, 0.3) !important;
+    }
+
+    /* 🆕 警告圖示樣式 */
+    .warning-icon {
+        animation: pulse 2s infinite;
+        transition: transform 0.2s;
+    }
+
+    .warning-icon:hover {
+        transform: scale(1.2);
+    }
+
+    @keyframes pulse {
+        0%, 100% {
+            opacity: 1;
+        }
+        50% {
+            opacity: 0.6;
+        }
+    }
+
+    /* 🆕 警告 Modal 樣式 */
+    #warningModal .modal-content {
+        border-radius: 8px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    }
+
+    #warningModal .modal-header {
+        border-radius: 8px 8px 0 0;
+    }
+
+    #warningModal .modal-body {
+        font-family: 'Microsoft JhengHei', 'PingFang TC', sans-serif;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header-section">
+    <h1>AI辨識校對</h1>
+    <p>查核並編輯OCR辨識結果</p>
+</div>
+
+<!-- Case Info -->
+<div class="alert alert-info" id="case-info-section" style="display: none;">
+    <div class="row">
+        <div class="col-md-3">
+            <strong>當前案件：</strong> <span id="case-client-name"></span>
+        </div>
+        <div class="col-md-3">
+            <strong>年度：</strong> <span id="case-year"></span>
+        </div>
+        <div class="col-md-3">
+            <strong>統編：</strong> <span id="case-tax-id"></span>
+        </div>
+    </div>
+</div>
+<div class="alert alert-warning" id="no-case-warning" style="display: none;">
+    <i class="fa fa-exclamation-triangle"></i> 請先從案件總覽選擇一個案件
+</div>
+
+<!-- Recognition Results -->
+<div class="card">
+    <div class="card-header">
+        <!-- 第一行：標題和操作按鈕 -->
+        <div class="clearfix" style="margin-bottom: 10px;">
+            <div class="pull-left">
+                <h3 id="doc-title" style="margin: 0; line-height: 34px;">營業稅申報書</h3>
+            </div>
+            <div class="pull-right">
+                <button class="btn btn-default btn-sm" id="edit-btn">
+                    <i class="fa fa-edit"></i> 編輯
+                </button>
+                <button class="btn btn-success btn-sm" id="save-btn" style="display: none;">
+                    <i class="fa fa-save"></i> 儲存
+                </button>
+                <button class="btn btn-primary btn-sm" id="create-version-btn" data-toggle="modal"
+                    data-target="#versionModal">
+                    <i class="fa fa-code-fork"></i> 建立版本
+                </button>
+            </div>
+        </div>
+
+        <!-- 第二行：筆數、篩選器和檔案來源按鈕 -->
+        <div class="clearfix" style="margin-bottom: 10px;">
+            <div class="pull-left" style="display: flex; align-items: center; gap: 15px;">
+                <p class="text-muted" style="margin: 0;">
+                    <span id="record-count">3</span> 筆資料
+                </p>
+                <select class="form-control input-sm" id="file-filter" style="display: none; width: 250px;">
+                    <option value="all">全部檔案</option>
+                </select>
+                <button class="btn btn-info btn-sm" id="toggle-file-source-btn" style="display: none;">
+                    <i class="fa fa-file-text-o"></i> 顯示檔案來源
+                </button>
+            </div>
+        </div>
+
+        <!-- 第三行：重要提醒 -->
+        <div class="alert alert-warning" id="edit-mode-alert" style="margin: 0; padding: 10px 15px;">
+            ⚠️ <strong>重要提醒：</strong>此頁面不會自動儲存，編輯後請務必按下「儲存」按鈕，並使用「建立版本」功能，之後可在紀錄與下載頁面查看與下載。
+        </div>
+        <div class="alert alert-info" id="view-from-version-alert"
+            style="margin: 0; padding: 10px 15px; display: none;">
+            ℹ️ <strong>重要提醒：</strong>編輯後請點擊「儲存」更新資料，並按下「建立版本」建立新版本，此更動不會影響舊有版本。
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- 營業稅申報書表格 (401) -->
+        <div id="table-401" class="table-container">
+            <!-- 銷項資料 -->
+            <div style="margin-bottom: 30px;">
+                <h4
+                    style="background: #f8f9fa; padding: 10px 15px; border-left: 4px solid #3498db; margin-bottom: 15px;">
+                    銷項資料</h4>
+                <div class="table-responsive">
+                    <table class="table table-bordered" id="sales-table">
+                        <thead>
+                            <tr style="background: #f8f9fa;">
+                                <th rowspan="3" class="text-center" style="vertical-align: middle; min-width: 100px;">月份
+                                </th>
+                                <th colspan="5" class="text-center" style="border-right: 2px solid #dee2e6;">一般稅額銷售額
+                                </th>
+                                <th rowspan="3" class="text-center" style="vertical-align: middle; min-width: 120px;">
+                                    特種稅額<br>銷售額</th>
+                                <th rowspan="3" class="text-center" style="vertical-align: middle; min-width: 100px;">其他
+                                </th>
+                                <th rowspan="3" class="text-center" style="vertical-align: middle; min-width: 120px;">
+                                    銷售額合計</th>
+                                <th colspan="3" class="text-center" style="border-left: 2px solid #dee2e6;">銷貨退回及折讓
+                                </th>
+                                <th rowspan="3" class="text-center" style="vertical-align: middle; min-width: 120px;">
+                                    銷貨退回<br>及折讓合計</th>
+                                <th rowspan="3" class="text-center" style="vertical-align: middle; min-width: 120px;">淨額
+                                </th>
+                            </tr>
+                            <tr style="background: #f8f9fa;">
+                                <th colspan="2" class="text-center">應稅</th>
+                                <th colspan="2" class="text-center">零稅率</th>
+                                <th rowspan="2" class="text-center"
+                                    style="vertical-align: middle; border-right: 2px solid #dee2e6;">免稅</th>
+                                <th rowspan="2" class="text-center" style="vertical-align: middle; min-width: 100px; border-left: 2px solid #dee2e6;">一般</th>
+                                <th rowspan="2" class="text-center" style="vertical-align: middle; min-width: 100px;">零稅率</th>
+                                <th rowspan="2" class="text-center" style="vertical-align: middle; min-width: 100px;">特種</th>
+                            </tr>
+                            <tr style="background: #f8f9fa;">
+                                <th class="text-center" style="min-width: 120px;">三聯式</th>
+                                <th class="text-center" style="min-width: 120px;">二聯式</th>
+                                <th class="text-center" style="min-width: 120px;">非經海關</th>
+                                <th class="text-center" style="min-width: 120px;">經海關</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sales-tbody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 進項資料 -->
+            <div>
+                <h4
+                    style="background: #f8f9fa; padding: 10px 15px; border-left: 4px solid #27ae60; margin-bottom: 15px;">
+                    進項資料</h4>
+                <div class="table-responsive">
+                    <table class="table table-bordered" id="purchase-table">
+                        <thead>
+                            <tr style="background: #f8f9fa;">
+                                <th rowspan="2" class="text-center" style="vertical-align: middle; min-width: 100px;">月份
+                                </th>
+                                <th colspan="2" class="text-center" style="border-right: 2px solid #dee2e6;">
+                                    得扣抵載有進項稅額之憑證</th>
+                                <th colspan="2" class="text-center" style="border-right: 2px solid #dee2e6;">退回折讓</th>
+                                <th colspan="2" class="text-center" style="border-right: 2px solid #dee2e6;">合計</th>
+                                <th rowspan="2" class="text-center" style="vertical-align: middle; min-width: 120px;">
+                                    進口貨物金額</th>
+                            </tr>
+                            <tr style="background: #f8f9fa;">
+                                <th class="text-center" style="min-width: 120px;">進貨及費用</th>
+                                <th class="text-center" style="min-width: 120px; border-right: 2px solid #dee2e6;">固定資產
+                                </th>
+                                <th class="text-center" style="min-width: 120px;">進貨及費用</th>
+                                <th class="text-center" style="min-width: 120px; border-right: 2px solid #dee2e6;">固定資產
+                                </th>
+                                <th class="text-center" style="min-width: 120px;">進貨及費用</th>
+                                <th class="text-center" style="min-width: 120px; border-right: 2px solid #dee2e6;">固定資產
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="purchase-tbody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 營業稅申報書表格 (403) -->
+        <div id="table-403" class="table-container" style="display: none;">
+            <!-- 銷項資料 -->
+            <div style="margin-bottom: 30px;">
+                <h4
+                    style="background: #f8f9fa; padding: 10px 15px; border-left: 4px solid #3498db; margin-bottom: 15px;">
+                    銷項資料</h4>
+                <div class="table-responsive">
+                    <table class="table table-bordered" id="sales-table-403">
+                        <thead>
+                            <tr style="background: #f8f9fa;">
+                                <th rowspan="3" class="text-center" style="vertical-align: middle; min-width: 100px;">月份
+                                </th>
+                                <th colspan="5" class="text-center" style="border-right: 2px solid #dee2e6;">一般稅額銷售額
+                                </th>
+                                <th rowspan="3" class="text-center" style="vertical-align: middle; min-width: 120px;">
+                                    特種稅額<br>銷售額</th>
+                                <th rowspan="3" class="text-center" style="vertical-align: middle; min-width: 100px;">其他
+                                </th>
+                                <th rowspan="3" class="text-center" style="vertical-align: middle; min-width: 120px;">
+                                    銷售額合計</th>
+                                <th colspan="3" class="text-center" style="border-left: 2px solid #dee2e6;">銷貨退回及折讓
+                                </th>
+                                <th rowspan="3" class="text-center" style="vertical-align: middle; min-width: 120px;">
+                                    銷貨退回<br>及折讓合計</th>
+                                <th rowspan="3" class="text-center" style="vertical-align: middle; min-width: 120px;">淨額
+                                </th>
+                            </tr>
+                            <tr style="background: #f8f9fa;">
+                                <th colspan="2" class="text-center">應稅</th>
+                                <th colspan="2" class="text-center">零稅率</th>
+                                <th rowspan="2" class="text-center"
+                                    style="vertical-align: middle; border-right: 2px solid #dee2e6;">免稅</th>
+                                <th rowspan="2" class="text-center" style="vertical-align: middle; min-width: 100px; border-left: 2px solid #dee2e6;">一般</th>
+                                <th rowspan="2" class="text-center" style="vertical-align: middle; min-width: 100px;">零稅率</th>
+                                <th rowspan="2" class="text-center" style="vertical-align: middle; min-width: 100px;">特種</th>
+                            </tr>
+                            <tr style="background: #f8f9fa;">
+                                <th class="text-center" style="min-width: 120px;">三聯式</th>
+                                <th class="text-center" style="min-width: 120px;">二聯式</th>
+                                <th class="text-center" style="min-width: 120px;">非經海關</th>
+                                <th class="text-center" style="min-width: 120px;">經海關</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sales-tbody-403">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 進項資料 -->
+            <div>
+                <h4
+                    style="background: #f8f9fa; padding: 10px 15px; border-left: 4px solid #27ae60; margin-bottom: 15px;">
+                    進項資料</h4>
+                <div class="table-responsive">
+                    <table class="table table-bordered" id="purchase-table-403">
+                        <thead>
+                            <tr style="background: #f8f9fa;">
+                                <th rowspan="2" class="text-center" style="vertical-align: middle; min-width: 100px;">月份
+                                </th>
+                                <th colspan="2" class="text-center" style="border-right: 2px solid #dee2e6;">
+                                    得扣抵載有進項稅額之憑證</th>
+                                <th colspan="2" class="text-center" style="border-right: 2px solid #dee2e6;">退回折讓</th>
+                                <th colspan="2" class="text-center" style="border-right: 2px solid #dee2e6;">合計</th>
+                                <th rowspan="2" class="text-center" style="vertical-align: middle; min-width: 120px;">
+                                    進口免稅貨物金額</th>
+                            </tr>
+                            <tr style="background: #f8f9fa;">
+                                <th class="text-center" style="min-width: 120px;">進貨及費用</th>
+                                <th class="text-center" style="min-width: 120px; border-right: 2px solid #dee2e6;">固定資產
+                                </th>
+                                <th class="text-center" style="min-width: 120px;">進貨及費用</th>
+                                <th class="text-center" style="min-width: 120px; border-right: 2px solid #dee2e6;">固定資產
+                                </th>
+                                <th class="text-center" style="min-width: 120px;">進貨及費用</th>
+                                <th class="text-center" style="min-width: 120px; border-right: 2px solid #dee2e6;">固定資產
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="purchase-tbody-403">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 扣繳憑單表格 (支出面/收入面) -->
+        <div id="table-withholding" class="table-container" style="display: none;">
+            <!-- Tab 切換（已移除，因為不會同時有支出和收入） -->
+
+            <div class="table-responsive">
+                <table class="table table-bordered" id="withholding-table">
+                    <thead>
+                        <tr style="background: #f8f9fa;">
+                            <th class="text-center file-source-column" style="min-width: 180px; display: none;">檔案來源
+                            </th>
+                            <th class="text-center page-number-column" style="min-width: 80px; display: none;">頁碼</th>
+                            <th class="text-center" style="min-width: 140px;">項目</th>
+                            <th class="text-center" style="min-width: 120px;">底稿索引</th>
+                            <th class="text-center" style="min-width: 260px;">扣繳單位名稱</th>
+                            <th class="text-center" style="min-width: 180px;">所得類別</th>
+                            <th class="text-center" style="min-width: 160px;" id="amount-header">各類給付總額</th>
+                            <th class="text-center" style="min-width: 140px;">扣繳稅額</th>
+                            <th class="text-center tax-rate-column" style="width: 80px;">稅率</th>
+                            <th class="text-center action-column" style="width: 80px; display: none;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="withholding-tbody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 🆕 錯誤顯示區域 -->
+<div id="error-container" style="margin-top: 20px; display: none;"></div>
+
+<!-- Navigation -->
+<div class="clearfix" style="margin-top: 30px;">
+    <div class="pull-left">
+        <button class="btn btn-default" id="back-to-database-btn" style="display: none;">
+            <i class="fa fa-arrow-left"></i> 返回資料庫
+        </button>
+        <button class="btn btn-default" id="back-to-dashboard-btn" style="display: none;">
+            <i class="fa fa-arrow-left"></i> 返回案件總覽
+        </button>
+    </div>
+    <div class="pull-right">
+        <button class="btn btn-primary" id="goto-history-btn">
+            查看操作紀錄 <i class="fa fa-arrow-right"></i>
+        </button>
+    </div>
+</div>
+
+<!-- Version Modal -->
+<div class="modal fade" id="versionModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+                <h4 class="modal-title">建立新版本</h4>
+            </div>
+            <div class="modal-body">
+                <form id="version-form">
+                    <div class="form-group">
+                        <label>文件類型</label>
+                        <input type="text" class="form-control" id="modal-doc-type" disabled>
+                    </div>
+                    <div class="form-group">
+                        <label>案件名稱</label>
+                        <input type="text" class="form-control" id="modal-case-name" value="未選擇案件" disabled>
+                    </div>
+                    <div class="form-group">
+                        <label>資料筆數</label>
+                        <input type="text" class="form-control" id="modal-record-count" disabled>
+                    </div>
+                    <div class="form-group">
+                        <label>檔案名稱 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="version-filename"
+                            placeholder="請輸入檔案名稱，例如：2024Q1營業稅申報資料">
+                    </div>
+                    <div class="form-group">
+                        <label>版本備註</label>
+                        <textarea class="form-control" id="version-notes" rows="3" style="resize: none; overflow: hidden;"
+                            placeholder="請輸入版本備註，例如：修正第一季度資料、更新扣繳稅額等..."></textarea>
+                    </div>
+                    <div class="alert alert-warning">
+                        <label>
+                            <input type="checkbox" id="amount-confirm">
+                            確認金額無誤 <span class="text-danger">*</span>
+                        </label>
+                        <p class="small" style="margin: 5px 0 0 20px;">我已仔細檢查並確認表格中的每一格金額數據都正確無誤，可以建立此版本。</p>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="confirm-create-version-btn">確定建立</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 🆕 新增記錄對話框 -->
+<div class="modal fade" id="addRecordModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+                <h4 class="modal-title">新增記錄</h4>
+            </div>
+            <div class="modal-body">
+                <form id="add-record-form">
+                    <div class="form-group">
+                        <label>項目 <span class="text-danger">*</span></label>
+                        <select class="form-control" id="new-record-item-name" required>
+                            <option value="">請選擇項目</option>
+                            <option value="薪資">薪資</option>
+                            <option value="執行業務報酬">執行業務報酬</option>
+                            <option value="利息">利息</option>
+                            <option value="租賃">租賃</option>
+                            <option value="權利金">權利金</option>
+                            <option value="股利">股利</option>
+                            <option value="競技、競賽及機會中獎">競技、競賽及機會中獎</option>
+                            <option value="退職所得">退職所得</option>
+                            <option value="財產交易">財產交易</option>
+                            <option value="其他所得">其他所得</option>
+                            <option value="退休金員工自提數">退休金員工自提數</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>檔案名稱 <span class="text-danger">*</span></label>
+                        <select class="form-control" id="new-record-file-name" required>
+                            <option value="">請選擇檔案</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>頁碼 <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="new-record-page-number" 
+                               min="1" placeholder="請輸入頁碼" required>
+                        <small class="text-muted" id="page-number-hint"></small>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="confirm-add-record-btn">確定新增</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // API Base URL - FastAPI 後端服務
+    var API_BASE_URL = '/api';
+
+    // 全域變數
+    var currentCase = null;
+    var caseId = null;
+    var jobIds = [];  // 從 URL 參數讀取的 job IDs
+    var allJobs = [];  // 從 API 載入的所有 Jobs
+    var currentTableData = [];  // 當前顯示的表格資料
+    var currentDocType = null;  // 當前文件類型
+    var isEditMode = false;
+    var isViewMode = false;  // 是否為查看模式（從版本載入）
+    var withholdingView = 'expense';  // 'expense' or 'income'
+    var viewMode = 'all';  // 'all' or 'single'
+    var selectedJobId = null;  // 當前選擇的單一 Job ID（用於 single 模式）
+
+    // ============ 🆕 警告對話框函數 ============
+    
+    // 顯示警告對話框
+    function showWarningDialog(month, warnings) {
+        var modalHtml = `
+            <div class="modal fade" id="warningModal" tabindex="-1" role="dialog">
+                <div class="modal-dialog" role="document">
+                    <div class="modal-content">
+                        <div class="modal-header" style="background-color: #f39c12; color: white;">
+                            <button type="button" class="close" data-dismiss="modal">
+                                <span style="color: white;">&times;</span>
+                            </button>
+                            <h4 class="modal-title">
+                                <i class="fa fa-exclamation-triangle"></i> 請檢查
+                            </h4>
+                        </div>
+                        <div class="modal-body" style="padding: 30px; text-align: center;">
+                            <p style="font-size: 16px; margin-bottom: 20px; color: #666;">
+                                <strong>${month}</strong> 的以下項目可能有誤：
+                            </p>
+                            <p style="font-size: 24px; color: #f39c12; font-weight: bold; margin: 20px 0;">
+                                ${warnings}
+                            </p>
+                            <p style="margin-top: 20px; color: #999; font-size: 14px;">
+                                建議重新確認表單數值
+                            </p>
+                        </div>
+                        <div class="modal-footer" style="text-align: center; border-top: none;">
+                            <button type="button" class="btn btn-primary btn-lg" id="acknowledge-warning-btn" style="min-width: 150px;">
+                                我知道了
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        $('#warningModal').remove();
+        $('body').append(modalHtml);
+        $('#warningModal').modal('show');
+        
+        $('#acknowledge-warning-btn').click(function() {
+            acknowledgeWarning(month);
+            $('#warningModal').modal('hide');
+        });
+    }
+
+    // 確認警告
+    function acknowledgeWarning(month) {
+        var record = currentTableData.find(r => r.month === month);
+        if (!record) return;
+        
+        record.warnings_acknowledged = true;
+        
+        // 重新渲染表格
+        if ($('#table-401').is(':visible')) {
+            render401Table();
+        } else if ($('#table-403').is(':visible')) {
+            render403Table();
+        }
+        
+        // 發送 API 更新資料庫
+        updateWarningAcknowledgement(record);
+    }
+
+    // 更新警告確認狀態到資料庫
+    function updateWarningAcknowledgement(record) {
+        // 找到對應的 Job
+        var job = allJobs.find(j => {
+            var json = j.result_json;
+            if (json.頁面資料) {
+                return json.頁面資料.some(p => extractMonthPeriod(p.所屬年月份)?.display === record.month);
+            } else {
+                return extractMonthPeriod(json.所屬年月份)?.display === record.month;
+            }
+        });
+        
+        if (!job) {
+            console.warn('找不到對應的 Job:', record.month);
+            return;
+        }
+        
+        var updatedJson = JSON.parse(JSON.stringify(job.result_json));
+        
+        if (updatedJson.頁面資料) {
+            updatedJson.頁面資料.forEach(function(pageData) {
+                var monthPeriod = extractMonthPeriod(pageData.所屬年月份);
+                if (monthPeriod?.display === record.month) {
+                    pageData.warnings_acknowledged = true;
+                }
+            });
+        } else {
+            updatedJson.warnings_acknowledged = true;
+        }
+        
+        $.ajax({
+            url: API_BASE_URL + '/jobs/' + job.id + '/result',
+            method: 'PATCH',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                ocr_result: updatedJson,
+                status: 'COMPLETED',
+                save_as_new_version: false
+            }),
+            success: function() {
+                console.log('✅ 警告確認狀態已更新');
+                showNotification('已確認警告', 'success');
+            },
+            error: function(xhr, status, error) {
+                console.error('❌ 更新警告確認狀態失敗:', error);
+                showNotification('更新失敗，請稍後再試', 'danger');
+            }
+        });
+    }
+
+    $(document).ready(function () {
+        // 從 URL 參數讀取 case_id、jobIds、version_id、from_version 和 view_mode
+        var urlParams = new URLSearchParams(window.location.search);
+        caseId = urlParams.get('case_id');
+        var jobIdsParam = urlParams.get('jobIds');
+        var versionId = urlParams.get('version_id');
+        var fromVersion = urlParams.get('from_version') === 'true';
+        viewMode = urlParams.get('view_mode') || 'all';
+
+        if (!caseId) {
+            // 嘗試從 localStorage 讀取
+            var storedCase = localStorage.getItem('selectedCase');
+            if (storedCase) {
+                currentCase = JSON.parse(storedCase);
+                caseId = currentCase.id;
+            }
+        }
+
+        if (jobIdsParam) {
+            jobIds = jobIdsParam.split(',').map(function (id) { return parseInt(id); });
+        }
+
+        // 如果是 single 模式，設定 selectedJobId
+        if (viewMode === 'single' && jobIds.length > 0) {
+            selectedJobId = jobIds[0];
+        }
+
+        // 根據 viewMode 控制建立版本按鈕的顯示
+        if (viewMode === 'single') {
+            $('#create-version-btn').hide();
+        } else {
+            $('#create-version-btn').show();
+        }
+
+        // 如果是從版本查看進入，顯示特殊提醒
+        if (fromVersion && jobIds.length > 0) {
+            $('#edit-mode-alert').hide();
+            $('#view-from-version-alert').show();
+        }
+
+        // 設置導航按鈕
+        setupNavigationButtons();
+
+        // 載入資料
+        if (caseId) {
+            loadCaseInfo();
+        } else if (jobIds.length > 0) {
+            // 如果有 jobIds 但沒有 caseId，嘗試從第一個 Job 取得案件資訊
+            console.log('沒有 case_id，但有 jobIds，嘗試從 Job 取得案件資訊');
+            // 先載入 Jobs 資料，loadJobsData 會處理案件資訊
+        } else {
+            // 既沒有案件 ID 也沒有 jobIds，強制重導向到案件總覽
+            showNotification('請先選擇一個案件', 'warning');
+            setTimeout(function () {
+                window.location.href = '/dashboard';
+            }, 1500);
+            return;
+        }
+
+        // 如果有 version_id，載入版本資料（查看模式）
+        if (versionId) {
+            loadVersionData(versionId);
+        } else if (jobIds.length > 0) {
+            // 否則載入 Jobs 資料（編輯模式）
+            loadJobsData();
+        } else {
+            showNotification('未選擇任何檔案', 'warning');
+            setTimeout(function () {
+                window.location.href = '/database?case_id=' + caseId;
+            }, 1500);
+            return;
+        }
+
+        // Edit mode toggle
+        $('#edit-btn').click(function () {
+            if (!isEditMode) {
+                // 進入編輯模式
+                isEditMode = true;
+                $(this).hide();
+
+                // 只有在非查看模式下才顯示儲存按鈕
+                if (!isViewMode) {
+                    $('#save-btn').show();
+                }
+
+                makeTableEditable();
+
+                // 更新提醒文字
+                if (isViewMode) {
+                    $('#view-mode-alert').html(
+                        'ℹ️ <strong>編輯中：</strong>您正在編輯歷史版本。完成後請點擊「建立版本」以儲存為新版本。'
+                    );
+                }
+            }
+        });
+
+        // Save button
+        $('#save-btn').click(function () {
+            // 儲存編輯（只在非查看模式下可用）
+            if (!isViewMode) {
+                saveTableEdits();
+            }
+        });
+
+        // Withholding tab switch - 已移除（不會同時有支出和收入）
+
+        // Create version (modal 內的確認按鈕)
+        $('#confirm-create-version-btn').click(function () {
+            createVersion();
+        });
+
+        // Toggle file source column
+        $('#toggle-file-source-btn').click(function () {
+            var $fileSourceColumns = $('.file-source-column');
+            var isVisible = $fileSourceColumns.is(':visible');
+
+            if (isVisible) {
+                // 隱藏檔案來源欄位
+                $fileSourceColumns.hide();
+                $(this).html('<i class="fa fa-file-text-o"></i> 顯示檔案來源');
+            } else {
+                // 顯示檔案來源欄位
+                $fileSourceColumns.show();
+                $(this).html('<i class="fa fa-eye-slash"></i> 隱藏檔案來源');
+            }
+
+            // 重新渲染表格
+            if ($('#table-withholding').is(':visible')) {
+                renderWithholdingTable();
+            }
+        });
+
+        // File filter change
+        $('#file-filter').change(function () {
+            var selectedValue = $(this).val();
+
+            if (selectedValue === 'all') {
+                // 切換到全部檔案模式
+                viewMode = 'all';
+                selectedJobId = null;
+                $('#create-version-btn').show();
+            } else {
+                // 切換到單一檔案模式
+                viewMode = 'single';
+                selectedJobId = parseInt(selectedValue);
+                $('#create-version-btn').hide();
+            }
+
+            // 重新處理資料並渲染
+            processJobsData();
+        });
+
+        // 🆕 版本備註自動調整高度功能
+        $('#version-notes').on('input', function() {
+            autoResizeTextarea(this);
+        });
+
+        // 初始化時也調整一次高度
+        setTimeout(function() {
+            autoResizeTextarea(document.getElementById('version-notes'));
+        }, 100);
+
+        // 🆕 新增記錄 Modal 事件處理
+        // 檔案選擇時更新頁碼提示和驗證
+        $('#new-record-file-name').change(function() {
+            var totalPages = $(this).find(':selected').data('total-pages');
+            var $pageInput = $('#new-record-page-number');
+            
+            if (totalPages) {
+                $('#page-number-hint').text('此檔案共 ' + totalPages + ' 頁（可輸入任意頁碼）');
+                $pageInput.val(''); // 清空頁碼輸入
+            } else {
+                $('#page-number-hint').text('');
+            }
+        });
+
+        // 確認新增記錄
+        $('#confirm-add-record-btn').click(function() {
+            var itemName = $('#new-record-item-name').val();
+            var jobId = $('#new-record-file-name').val();
+            var pageNumber = parseInt($('#new-record-page-number').val());
+            
+            // 驗證
+            if (!itemName) {
+                showNotification('請選擇項目', 'warning');
+                return;
+            }
+            
+            if (!jobId) {
+                showNotification('請選擇檔案', 'warning');
+                return;
+            }
+            
+            if (!pageNumber || isNaN(pageNumber) || pageNumber < 1) {
+                showNotification('請輸入有效的頁碼（必須大於 0）', 'warning');
+                return;
+            }
+            
+            // 新增記錄
+            addNewRecordWithFileInfo(itemName, parseInt(jobId), pageNumber);
+            
+            // 關閉 Modal
+            $('#addRecordModal').modal('hide');
+            
+            // 清空表單
+            $('#new-record-item-name').val('');
+            $('#new-record-file-name').val('');
+            $('#new-record-page-number').val('');
+            $('#page-number-hint').text('');
+        });
+    });
+
+    // ============ API 調用函數 ============
+
+    function loadVersionData(versionId) {
+        showLoading();
+        $.ajax({
+            url: API_BASE_URL + '/versions/' + versionId,
+            method: 'GET',
+            success: function (version) {
+                hideLoading();
+                console.log('已載入版本資料:', version);
+
+                // 設定文件類型
+                currentDocType = version.document_type;
+
+                // 載入表格資料
+                currentTableData = version.table_data || [];
+
+                console.log('文件類型:', currentDocType);
+                console.log('表格資料筆數:', currentTableData.length);
+                console.log('表格資料範例:', currentTableData[0]);
+
+                // 根據文件類型顯示對應的表格
+                // 判斷邏輯：檢查 document_type 字串內容
+                var is401or403 = currentDocType.includes('401') ||
+                    currentDocType.includes('403') ||
+                    currentDocType.includes('營業稅') ||
+                    currentDocType.includes('營業人銷售額');
+
+                if (is401or403) {
+                    // 判斷是401還是403表格
+                    if (currentDocType.includes('403')) {
+                        console.log('顯示 403 表格');
+                        $('#table-401').hide();
+                        $('#table-403').show();
+                        $('#table-withholding').hide();
+                        $('#doc-title').text(currentDocType);
+                        render403Table();
+                    } else {
+                        console.log('顯示 401 表格');
+                        $('#table-401').show();
+                        $('#table-403').hide();
+                        $('#table-withholding').hide();
+                        $('#doc-title').text(currentDocType);
+                        render401Table();
+                    }
+                } else {
+                    // 扣繳憑單表格
+                    console.log('顯示扣繳憑單表格');
+                    $('#table-401').hide();
+                    $('#table-withholding').show();
+
+                    // 判斷收支方向
+                    if (currentDocType.includes('支出')) {
+                        withholdingView = 'expense';
+                        $('#doc-title').text(currentDocType);
+                        $('#amount-header').text('各類給付總額');
+                    } else if (currentDocType.includes('收入')) {
+                        withholdingView = 'income';
+                        $('#doc-title').text(currentDocType);
+                        $('#amount-header').text('各類收益總額');
+                    } else {
+                        // 預設為支出
+                        withholdingView = 'expense';
+                        $('#doc-title').text(currentDocType);
+                        $('#amount-header').text('各類給付總額');
+                    }
+
+                    renderWithholdingTable();
+                }
+
+                $('#record-count').text(currentTableData.length);
+                $('#modal-record-count').val(currentTableData.length + ' 筆');
+                $('#modal-doc-type').val(currentDocType);
+
+                // 🆕 檢查並顯示錯誤訊息
+                showJobErrors();
+
+                // 如果有 case_id，更新案件名稱到 modal
+                if (currentCase) {
+                    $('#modal-case-name').val(currentCase.client_name || '未選擇案件');
+                }
+
+                // 設定為查看模式
+                isViewMode = true;
+
+                // 查看模式：顯示編輯按鈕（允許編輯並建立新版本）
+                $('#edit-btn').show();
+                $('#save-btn').hide();
+
+                // 顯示查看模式提醒，隱藏編輯模式提醒
+                $('#edit-mode-alert').hide();
+                $('#view-mode-alert').show();
+
+                showNotification('已載入版本資料，可進行編輯並建立新版本', 'success');
+            },
+            error: function (xhr, status, error) {
+                hideLoading();
+                console.error('載入版本資料失敗:', error);
+                showNotification('載入版本資料失敗', 'danger');
+            }
+        });
+    }
+
+    function setupNavigationButtons() {
+        if (caseId) {
+            $('#back-to-database-btn').show().click(function () {
+                window.location.href = '/database?case_id=' + caseId;
+            });
+        } else {
+            $('#back-to-dashboard-btn').show().click(function () {
+                window.location.href = '/dashboard';
+            });
+        }
+
+        $('#goto-history-btn').click(function () {
+            if (caseId) {
+                window.location.href = '/history?case_id=' + caseId;
+            } else {
+                window.location.href = '/history';
+            }
+        });
+    }
+
+    function loadCaseInfo() {
+        if (currentCase) {
+            showCaseInfo(currentCase);
+            return;
+        }
+
+        if (!caseId) return;
+
+        $.ajax({
+            url: API_BASE_URL + '/cases/' + caseId,
+            method: 'GET',
+            success: function (caseData) {
+                currentCase = caseData;
+                localStorage.setItem('selectedCase', JSON.stringify(caseData));
+                showCaseInfo(caseData);
+            },
+            error: function (xhr, status, error) {
+                console.error('載入案件資訊失敗:', error);
+            }
+        });
+    }
+
+    function showCaseInfo(caseData) {
+        $('#case-client-name').text(caseData.client_name || '');
+        $('#case-year').text(caseData.year || '');
+        $('#case-tax-id').text(caseData.tax_id || '');
+        $('#case-info-section').show();
+        $('#modal-case-name').val(caseData.client_name || '未選擇案件');
+    }
+
+    function loadJobsData() {
+        if (jobIds.length === 0) {
+            showNotification('未選擇任何檔案', 'warning');
+            return;
+        }
+
+        showLoading();
+        $.ajax({
+            url: API_BASE_URL + '/jobs?ids=' + jobIds.join(','),
+            method: 'GET',
+            success: function (jobs) {
+                hideLoading();
+                allJobs = jobs;
+                console.log('已載入 ' + allJobs.length + ' 個 Jobs');
+
+                // 🆕 檢查是否從版本進入但找不到任何 Jobs
+                var urlParams = new URLSearchParams(window.location.search);
+                var fromVersion = urlParams.get('from_version') === 'true';
+                
+                if (allJobs.length === 0 && fromVersion) {
+                    // 從版本進入但找不到檔案，顯示友善的錯誤訊息
+                    showNotification('此版本記錄的檔案已被刪除，無法載入資料。請刪除此版本記錄或重新建立版本。', 'danger');
+                    setTimeout(function() {
+                        window.location.href = '/history?case_id=' + caseId;
+                    }, 3000);
+                    return;
+                }
+
+                // 如果沒有 caseId，從第一個 Job 取得案件資訊
+                if (!caseId && jobs.length > 0) {
+                    caseId = jobs[0].case_id;
+                    console.log('從 Job 取得 case_id:', caseId);
+                    // 載入案件資訊
+                    loadCaseInfo();
+                }
+
+                processJobsData();
+            },
+            error: function (xhr, status, error) {
+                hideLoading();
+                console.error('載入 Jobs 資料失敗:', error);
+                showNotification('載入檔案資料失敗', 'danger');
+            }
+        });
+    }
+
+    function processJobsData() {
+        if (allJobs.length === 0) {
+            showNotification('沒有可顯示的資料', 'warning');
+            return;
+        }
+
+        // 根據 viewMode 篩選要處理的 Jobs
+        var jobsToProcess = allJobs;
+        if (viewMode === 'single' && selectedJobId) {
+            jobsToProcess = allJobs.filter(function (job) { return job.id === selectedJobId; });
+        }
+
+        // 判斷文件類型（取第一個 job 的類型）
+        var firstJob = jobsToProcess[0];
+        currentDocType = firstJob.document_type;
+
+        // 根據類型渲染不同的表格
+        if (currentDocType === '401' || currentDocType === '403') {
+            // 營業稅申報書（不支援檔案篩選）
+            if (currentDocType === '403') {
+                currentTableData = mapJobsTo403Data(allJobs);
+                $('#doc-title').text('營業稅申報書(403)');
+                $('#modal-doc-type').val('營業稅申報書(403)');
+                $('#table-401').hide();
+                $('#table-403').show();
+                $('#table-withholding').hide();
+                $('#file-filter').hide();
+                $('#toggle-file-source-btn').hide();
+                render403Table();
+            } else {
+                currentTableData = mapJobsTo401Data(allJobs);
+                $('#doc-title').text('營業稅申報書(401)');
+                $('#modal-doc-type').val('營業稅申報書(401)');
+                $('#table-401').show();
+                $('#table-403').hide();
+                $('#table-withholding').hide();
+                $('#file-filter').hide();
+                $('#toggle-file-source-btn').hide();
+                render401Table();
+            }
+        } else if (currentDocType === 'withholding-slip' || currentDocType === 'withholding-statement' || currentDocType === 'dividend-slip') {
+            // 扣繳憑單（包括股利憑單）
+            currentTableData = mapJobsToWithholdingData(jobsToProcess);
+            $('#table-401').hide();
+            $('#table-withholding').show();
+
+            // 初始化檔案篩選器
+            initializeFileFilter();
+
+            // 根據 detected_stream 和 document_type 設定標題和欄位名稱
+            var docTypeDisplayName = '';
+            if (currentDocType === 'dividend-slip') {
+                docTypeDisplayName = '股利憑單';
+            } else {
+                docTypeDisplayName = '扣繳憑單';
+            }
+
+            if (firstJob.detected_stream === '支出') {
+                withholdingView = 'expense';
+                $('#doc-title').text(docTypeDisplayName + '（支出）');
+                $('#modal-doc-type').val(docTypeDisplayName + '（支出）');
+                $('#amount-header').text('各類給付總額');
+            } else if (firstJob.detected_stream === '收入') {
+                withholdingView = 'income';
+                $('#doc-title').text(docTypeDisplayName + '（收入）');
+                $('#modal-doc-type').val(docTypeDisplayName + '（收入）');
+                $('#amount-header').text('各類收益總額');
+            } else {
+                // 預設為支出
+                withholdingView = 'expense';
+                $('#doc-title').text(docTypeDisplayName);
+                $('#modal-doc-type').val(docTypeDisplayName);
+                $('#amount-header').text('各類給付總額');
+            }
+
+            // 顯示/隱藏按鈕
+            if (allJobs.length > 1) {
+                $('#toggle-file-source-btn').show();
+            } else {
+                $('#toggle-file-source-btn').hide();
+            }
+
+            // 控制建立版本按鈕的顯示
+            if (viewMode === 'single') {
+                $('#create-version-btn').hide();
+            } else {
+                $('#create-version-btn').show();
+            }
+
+            renderWithholdingTable();
+        }
+
+        $('#record-count').text(currentTableData.length);
+        $('#modal-record-count').val(currentTableData.length + ' 筆');
+
+        // 🆕 檢查並顯示錯誤訊息
+        showJobErrors();
+
+        // 編輯模式：顯示編輯模式提醒（除非是從版本查看進入）
+        var urlParams = new URLSearchParams(window.location.search);
+        var fromVersion = urlParams.get('from_version') === 'true';
+
+        if (!fromVersion) {
+            $('#edit-mode-alert').show();
+            $('#view-from-version-alert').hide();
+        }
+        // 如果是從版本進入，保持 view-from-version-alert 顯示
+    }
+
+    function initializeFileFilter() {
+        var $filter = $('#file-filter');
+        $filter.empty();
+
+        // 新增「全部檔案」選項
+        $filter.append('<option value="all">全部檔案 (' + allJobs.length + ' 個)</option>');
+
+        // 新增每個檔案的選項
+        allJobs.forEach(function (job) {
+            var fileName = job.original_filename || '未命名檔案';
+            $filter.append('<option value="' + job.id + '">' + fileName + '</option>');
+        });
+
+        // 設定當前選擇的值
+        if (viewMode === 'single' && selectedJobId) {
+            $filter.val(selectedJobId);
+        } else {
+            $filter.val('all');
+        }
+
+        $filter.show();
+    }
+
+    // ============ JSON 映射函數 ============
+
+    function mapJobsTo401Data(jobs) {
+        // 將 Job 的 result_json 映射到 401 表格資料結構
+        console.log('映射 401 資料:', jobs);
+
+        var records = [];
+
+        jobs.forEach(function (job) {
+            // 檢查 Job 是否有 result_json
+            if (!job.result_json) {
+                console.warn('Job', job.id, '沒有 result_json，跳過');
+                return;
+            }
+
+            var json = job.result_json;
+
+            // 檢查是否為多頁格式
+            if (json.頁面資料 && Array.isArray(json.頁面資料)) {
+                console.log('Job', job.id, '是多頁格式，共', json.頁面資料.length, '頁');
+                
+                // 多頁檔案：迭代每一頁
+                json.頁面資料.forEach(function (pageData, pageIndex) {
+                    console.log('處理第', pageIndex + 1, '頁');
+                    processPage(pageData, job.id);
+                });
+            } else {
+                // 單頁格式
+                console.log('Job', job.id, '是單頁格式');
+                processPage(json, job.id);
+            }
+        });
+
+        // 處理單頁資料的輔助函數
+        function processPage(json, jobId) {
+            // 提取月份區間（從「所屬年月份」欄位）
+            var monthPeriod = extractMonthPeriod(json.所屬年月份);
+
+            // 如果無法提取月份，跳過這個頁面
+            if (!monthPeriod) {
+                console.warn('Job', jobId, '無法提取月份，所屬年月份:', json.所屬年月份);
+                return;
+            }
+
+            // 提取銷項資料
+            var sales = json.銷項 || {};
+            var salesGeneral = sales.一般稅額銷售額 || {};
+            var salesZeroRate = salesGeneral.零稅率銷售額 || {};  // 🔧 修正：零稅率銷售額在一般稅額銷售額下
+
+            // 提取進項資料
+            var purchase = json.進項 || {};
+            var purchaseDeductible = purchase.得扣抵 || {};
+            var purchaseReturn = purchase.減退回及折讓 || {};
+            var purchaseTotal = purchase.合計 || {};  // 🆕 新增：提取合計資料
+
+            // 銷貨退回及折讓三欄
+            var returnGeneral = parseNumber(sales.銷項退回及折讓 || 0);
+            var returnZeroRate = parseNumber(salesZeroRate.海關退回及折讓 || 0);
+            var returnSpecial = 0;  // 401 表單特種退回固定為 0
+            var returnTotal = returnGeneral + returnZeroRate + returnSpecial;
+
+            records.push({
+                month: monthPeriod.display,  // 顯示格式：07-08月
+                monthSort: monthPeriod.sortKey,  // 排序用：起始月份數字
+                頁碼: json.頁碼 || 1,               // 🆕 保留頁碼（雖然不顯示，但為了一致性）
+                總頁數: json.總頁數 || 1,           // 🆕 保留總頁數
+                // 銷項 - 🔧 修正：使用 parseNumber 處理帶逗號的字串
+                triplicateSales: parseNumber(salesGeneral.應稅?.三聯式 || salesGeneral.應稅?.三聯式發票 || 0),
+                duplicateSales: parseNumber(salesGeneral.應稅?.二聯式 || 0),
+                customsSales: parseNumber(salesZeroRate.經海關 || 0),
+                nonCustomsSales: parseNumber(salesZeroRate.非經海關 || 0),
+                taxFreeSales: parseNumber(salesGeneral.免稅 || 0),
+                specialTaxSales: parseNumber(sales.特種稅額銷售額 || sales.特種稅額合計 || 0),
+                otherSales: parseNumber(sales.其他 || 0),
+                totalSales: 0,  // 稍後計算
+                // 銷貨退回及折讓（三欄 + 合計）
+                returnGeneral: returnGeneral,           // 一般
+                returnZeroRate: returnZeroRate,         // 零稅率
+                returnSpecial: returnSpecial,           // 特種（401固定為0）
+                returnTotal: returnTotal,               // 合計
+                netAmount: 0,  // 稍後計算
+                // 進項 - 🔧 修改：得扣抵 = 合計 + 退回折讓
+                purchaseAndExpense: parseNumber(purchaseTotal.進貨及費用 || 0) + parseNumber(purchaseReturn.進貨及費用 || 0),
+                fixedAssets: parseNumber(purchaseTotal.固定資產 || 0) + parseNumber(purchaseReturn.固定資產 || 0),
+                purchaseReturn: parseNumber(purchaseReturn.進貨及費用 || 0),
+                purchaseReturnAssets: parseNumber(purchaseReturn.固定資產 || 0),
+                purchaseTotal: parseNumber(purchaseTotal.進貨及費用 || 0),        // 🆕 新增：合計-進貨及費用
+                assetsTotal: parseNumber(purchaseTotal.固定資產 || 0),            // 🆕 新增：合計-固定資產
+                importAmount: parseNumber(purchase.進口貨物金額 || 0),
+                // 🆕 新增：warnings 欄位
+                warnings: json.warnings || [],
+                warnings_acknowledged: json.warnings_acknowledged || false
+            });
+        }
+        
+        // 🆕 計算每筆記錄的銷售額合計和淨額（前端自行計算，不依賴後端 JSON）
+        records.forEach(function(record) {
+            // 銷售額合計 = 三聯式 + 二聯式 + 經海關 + 非經海關 + 免稅 + 特種稅額 + 其他
+            record.totalSales = record.triplicateSales + record.duplicateSales + 
+                               record.customsSales + record.nonCustomsSales + 
+                               record.taxFreeSales + record.specialTaxSales + 
+                               record.otherSales;
+            
+            // 淨額 = 銷售額合計 - 銷貨退回及折讓合計
+            record.netAmount = record.totalSales - record.returnTotal;
+        });
+
+        // 按月份排序（從小到大）
+        records.sort(function (a, b) {
+            return a.monthSort - b.monthSort;
+        });
+
+        console.log('映射後的 401 資料:', records);
+        return records;
+    }
+
+    // 輔助函數：提取月份區間
+    function extractMonthPeriod(monthStr) {
+        if (!monthStr) return null;
+
+        // 格式：113年07-08月 或 113年01-02月
+        var match = monthStr.match(/(\d+)年(\d+)-(\d+)月/);
+        if (match) {
+            var year = match[1];
+            var startMonth = match[2];
+            var endMonth = match[3];
+
+            return {
+                display: startMonth + '-' + endMonth + '月',  // 07-08月
+                sortKey: parseInt(startMonth)  // 7（用於排序）
+            };
+        }
+
+        // 如果格式不符，嘗試其他格式
+        // 格式：113年07月
+        match = monthStr.match(/(\d+)年(\d+)月/);
+        if (match) {
+            var month = match[2];
+            return {
+                display: month + '月',
+                sortKey: parseInt(month)
+            };
+        }
+
+        return null;
+    }
+
+    function mapJobsTo403Data(jobs) {
+        // 將 Job 的 result_json 映射到 403 表格資料結構
+        console.log('映射 403 資料:', jobs);
+
+        var records = [];
+
+        jobs.forEach(function (job) {
+            // 檢查 Job 是否有 result_json
+            if (!job.result_json) {
+                console.warn('Job', job.id, '沒有 result_json，跳過');
+                return;
+            }
+
+            var json = job.result_json;
+
+            // 檢查是否為多頁格式
+            if (json.頁面資料 && Array.isArray(json.頁面資料)) {
+                console.log('Job', job.id, '是多頁格式，共', json.頁面資料.length, '頁');
+                
+                // 多頁檔案：迭代每一頁
+                json.頁面資料.forEach(function (pageData, pageIndex) {
+                    console.log('處理第', pageIndex + 1, '頁');
+                    processPage403(pageData, job.id);
+                });
+            } else {
+                // 單頁格式
+                console.log('Job', job.id, '是單頁格式');
+                processPage403(json, job.id);
+            }
+        });
+
+        // 處理單頁資料的輔助函數（403專用）
+        function processPage403(json, jobId) {
+            var monthPeriod = extractMonthPeriod(json.所屬年月份);
+
+            // 如果無法提取月份，跳過這個頁面
+            if (!monthPeriod) {
+                console.warn('Job', jobId, '無法提取月份，所屬年月份:', json.所屬年月份);
+                return;
+            }
+
+            // 提取銷項資料
+            var sales = json.銷項 || {};
+            var salesGeneral = sales.一般稅額銷售額 || {};
+            var salesZeroRate = salesGeneral.零稅率銷售額 || {};  // 🔧 修正：零稅率銷售額在一般稅額銷售額下
+
+            // 提取進項資料
+            var purchase = json.進項 || {};
+            var purchaseDeductible = purchase.得扣抵 || {};
+            var purchaseReturn = purchase.減退回及折讓 || {};
+            var purchaseTotal = purchase.合計 || {};
+
+            // 🆕 403特有：特種稅額計算
+            var specialTaxSales = parseNumber(sales['特種稅額-合計'] || 0) + parseNumber(sales['特種稅額-銷售額退回及折讓'] || 0);
+
+            // 銷貨退回及折讓三欄
+            var returnGeneral = parseNumber(sales.銷項退回及折讓 || 0);
+            var returnZeroRate = parseNumber(salesZeroRate.海關退回及折讓 || 0);
+            var returnSpecial = parseNumber(sales['特種稅額-銷售額退回及折讓'] || 0);
+            var returnTotal = returnGeneral + returnZeroRate + returnSpecial;
+
+            records.push({
+                month: monthPeriod.display,  // 顯示格式：07-08月
+                monthSort: monthPeriod.sortKey,  // 排序用：起始月份數字
+                頁碼: json.頁碼 || 1,
+                總頁數: json.總頁數 || 1,
+                // 銷項 - 🔧 修正：使用 parseNumber 處理帶逗號的字串
+                triplicateSales: parseNumber(salesGeneral.應稅?.三聯式 || salesGeneral.應稅?.三聯式發票 || 0),
+                duplicateSales: parseNumber(salesGeneral.應稅?.二聯式 || 0),
+                customsSales: parseNumber(salesZeroRate?.經海關 || 0),
+                nonCustomsSales: parseNumber(salesZeroRate?.非經海關 || 0),
+                taxFreeSales: parseNumber(salesGeneral.免稅 || 0),
+                specialTaxSales: specialTaxSales,  // 🆕 403特有：特種稅額銷售額 = 合計 + 退回及折讓
+                otherSales: parseNumber(sales.其他 || 0),
+                totalSales: 0,  // 稍後計算
+                // 銷貨退回及折讓（三欄 + 合計）
+                returnGeneral: returnGeneral,           // 一般
+                returnZeroRate: returnZeroRate,         // 零稅率
+                returnSpecial: returnSpecial,           // 特種
+                returnTotal: returnTotal,               // 合計
+                netAmount: 0,  // 稍後計算
+                // 進項
+                purchaseAndExpense: parseNumber(purchaseTotal.進貨及費用 || 0) + parseNumber(purchaseReturn.進貨及費用 || 0),
+                fixedAssets: parseNumber(purchaseTotal.固定資產 || 0) + parseNumber(purchaseReturn.固定資產 || 0),
+                purchaseReturn: parseNumber(purchaseReturn.進貨及費用 || 0),
+                purchaseReturnAssets: parseNumber(purchaseReturn.固定資產 || 0),
+                purchaseTotal: parseNumber(purchaseTotal.進貨及費用 || 0),
+                assetsTotal: parseNumber(purchaseTotal.固定資產 || 0),
+                importAmount: parseNumber(purchase.進口貨物金額 || purchase.進口免稅貨物金額 || 0),
+                // 🆕 新增：warnings 欄位
+                warnings: json.warnings || [],
+                warnings_acknowledged: json.warnings_acknowledged || false
+            });
+        }
+        
+        // 🆕 計算每筆記錄的銷售額合計和淨額（前端自行計算，不依賴後端 JSON）
+        records.forEach(function(record) {
+            // 銷售額合計 = 三聯式 + 二聯式 + 經海關 + 非經海關 + 免稅 + 特種稅額 + 其他
+            record.totalSales = record.triplicateSales + record.duplicateSales + 
+                               record.customsSales + record.nonCustomsSales + 
+                               record.taxFreeSales + record.specialTaxSales + 
+                               record.otherSales;
+            
+            // 淨額 = 銷售額合計 - 銷貨退回及折讓合計
+            record.netAmount = record.totalSales - record.returnTotal;
+        });
+
+        // 按月份排序（從小到大）
+        records.sort(function (a, b) {
+            return a.monthSort - b.monthSort;
+        });
+
+        console.log('映射後的 403 資料:', records);
+        return records;
+    }
+
+    function mapJobsToWithholdingData(jobs) {
+        // 將 Job 的 result_json 映射到扣繳憑單表格資料結構
+        console.log('映射扣繳憑單資料:', jobs);
+
+        var records = [];
+
+        jobs.forEach(function (job) {
+            if (!job.result_json) {
+                console.warn('Job', job.id, '沒有 result_json，跳過');
+                return;
+            }
+
+            var json = job.result_json;
+
+            // 檢查是否為多頁格式
+            if (json.頁面資料 && Array.isArray(json.頁面資料)) {
+                // 多頁檔案：迭代每一頁
+                json.頁面資料.forEach(function (pageData) {
+                    var pageRecords = pageData.records || [];
+                    var companyName = pageData.扣繳單位名稱 || '';
+
+                    pageRecords.forEach(function (record) {
+                        records.push({
+                            jobId: job.id,  // 記錄來源 Job ID
+                            fileName: job.original_filename || '',  // 🆕 記錄檔案名稱
+                            頁碼: pageData.頁碼 || 1,           // 🆕 保留頁碼
+                            總頁數: pageData.總頁數 || 1,       // 🆕 保留總頁數
+                            憑單序號: pageData.憑單序號,        // 🆕 保留憑單序號（股利憑單用）
+                            itemName: record.項目 || '',
+                            payerName: companyName,
+                            incomeType: record.所得類別及代號 || '',
+                            totalAmount: parseInt(record.各類給付總額 || 0),
+                            withholdingTax: parseInt(record.扣繳稅額 || 0),
+                            has_warning: record.has_warning || false  // 🆕 傳遞警告標記
+                        });
+                    });
+                });
+            } else {
+                // 單頁檔案：直接讀取 records
+                var jsonRecords = json.records || [];
+                var companyName = json.扣繳單位名稱 || '';
+
+                jsonRecords.forEach(function (record) {
+                    records.push({
+                        jobId: job.id,  // 記錄來源 Job ID
+                        fileName: job.original_filename || '',  // 🆕 記錄檔案名稱
+                        頁碼: json.頁碼 || 1,               // 🆕 保留頁碼
+                        總頁數: json.總頁數 || 1,           // 🆕 保留總頁數
+                        憑單序號: json.憑單序號,            // 🆕 保留憑單序號（股利憑單用）
+                        itemName: record.項目 || '',
+                        payerName: companyName,
+                        incomeType: record.所得類別及代號 || '',
+                        totalAmount: parseInt(record.各類給付總額 || 0),
+                        withholdingTax: parseInt(record.扣繳稅額 || 0)
+                    });
+                });
+            }
+        });
+
+        // 定義項目排序順序
+        var itemOrder = {
+            '薪資': 1,
+            '執行業務報酬': 2,
+            '利息': 3,
+            '租賃': 4,
+            '權利金': 5,
+            '股利': 6,
+            '競技、競賽及機會中獎': 7,
+            '退職所得': 8,
+            '財產交易': 9,
+            '其他所得': 10,
+            '退休金員工自提數': 11
+        };
+
+        // 排序：先按項目順序，再按所得類別
+        records.sort(function (a, b) {
+            var orderA = itemOrder[a.itemName] || 999;
+            var orderB = itemOrder[b.itemName] || 999;
+
+            // 先比較項目順序
+            if (orderA !== orderB) {
+                return orderA - orderB;
+            }
+
+            // 項目相同，再比較所得類別
+            return (a.incomeType || '').localeCompare(b.incomeType || '');
+        });
+
+        console.log('映射並排序後的扣繳憑單資料:', records);
+        
+        
+        return records;
+    }
+
+    function saveTableEdits() {
+        // 同步表格資料回 currentTableData
+        syncTableDataToCurrentData();
+
+        showLoading();
+
+        // 將 currentTableData 轉換回 result_json 格式並更新每個 Job
+        var updatePromises = [];
+
+        if ($('#table-401').is(':visible')) {
+            // 401 表格：需要將資料轉換回原始 JSON 格式
+            updatePromises = save401DataToJobs();
+        } else if ($('#table-403').is(':visible')) {
+            // 403 表格：需要將資料轉換回原始 JSON 格式
+            updatePromises = save403DataToJobs();
+        } else if ($('#table-withholding').is(':visible')) {
+            // 扣繳憑單表格：需要將資料轉換回原始 JSON 格式
+            updatePromises = saveWithholdingDataToJobs();
+        }
+
+        // 等待所有更新完成
+        Promise.all(updatePromises)
+            .then(function () {
+                hideLoading();
+                showNotification('已儲存所有變更', 'success');
+
+                // 退出編輯模式
+                isEditMode = false;
+                $('#save-btn').hide();
+                $('#edit-btn').show();
+                makeTableReadonly();
+            })
+            .catch(function (error) {
+                hideLoading();
+                console.error('儲存失敗:', error);
+                showNotification('儲存失敗，請稍後再試', 'danger');
+            });
+    }
+
+    function save401DataToJobs() {
+        // 將 401 表格資料轉換回 result_json 格式並更新 Jobs
+        var promises = [];
+
+        // 按月份分組資料（因為一個 Job 對應一個月份的資料）
+        var monthDataMap = {};
+        currentTableData.forEach(function (record) {
+            monthDataMap[record.month] = record;
+        });
+
+        // 更新每個 Job 的 result_json
+        allJobs.forEach(function (job) {
+            if (!job.result_json) return;
+
+            var json = job.result_json;
+            var updatedJson = JSON.parse(JSON.stringify(json));  // 深拷貝原始 JSON
+            var hasUpdate = false;
+
+            // 檢查是否為多頁格式
+            if (json.頁面資料 && Array.isArray(json.頁面資料)) {
+                // 多頁格式：更新每一頁
+                json.頁面資料.forEach(function (pageData, pageIndex) {
+                    var monthPeriod = extractMonthPeriod(pageData.所屬年月份);
+                    
+                    if (monthPeriod && monthDataMap[monthPeriod.display]) {
+                        var record = monthDataMap[monthPeriod.display];
+                        updatePageData(updatedJson.頁面資料[pageIndex], record);
+                        hasUpdate = true;
+                    }
+                });
+            } else {
+                // 單頁格式
+                var monthPeriod = extractMonthPeriod(json.所屬年月份);
+                
+                if (monthPeriod && monthDataMap[monthPeriod.display]) {
+                    var record = monthDataMap[monthPeriod.display];
+                    updatePageData(updatedJson, record);
+                    hasUpdate = true;
+                }
+            }
+
+            // 如果有更新，發送請求
+            if (hasUpdate) {
+                var promise = $.ajax({
+                    url: API_BASE_URL + '/jobs/' + job.id + '/result',
+                    method: 'PATCH',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        ocr_result: updatedJson,
+                        status: 'COMPLETED',
+                        save_as_new_version: false
+                    })
+                });
+
+                promises.push(promise);
+            }
+        });
+
+        // 輔助函數：更新單頁資料
+        function updatePageData(pageJson, record) {
+            pageJson.銷項 = {
+                一般稅額銷售額: {
+                    應稅: {
+                        三聯式: record.triplicateSales.toString(),
+                        二聯式: record.duplicateSales.toString(),
+                        三聯式發票: 0,  // 保持原有欄位
+                        收銀機發票銷售額: 0  // 保持原有欄位
+                    },
+                    零稅率銷售額: {
+                        經海關: record.customsSales.toString(),
+                        非經海關: record.nonCustomsSales.toString(),
+                        海關退回及折讓: record.returnZeroRate.toString()  // 零稅率退回
+                    },
+                    免稅: record.taxFreeSales.toString()
+                },
+                特種稅額銷售額: record.specialTaxSales.toString(),
+                其他: record.otherSales.toString(),
+                銷售額合計: record.totalSales.toString(),
+                銷項退回及折讓: record.returnGeneral.toString(),  // 一般銷項退回及折讓
+                '銷貨退回及折讓-零稅率': record.returnZeroRate.toString(),
+                '銷貨退回及折讓-特種': record.returnSpecial.toString(),
+                銷貨退回及折讓合計: record.returnTotal.toString(),
+                淨額: record.netAmount.toString()
+            };
+
+            // 🔧 修改：重新計算得扣抵和合計的關係
+            pageJson.進項 = {
+                得扣抵: {
+                    進貨及費用: record.purchaseAndExpense.toString(),
+                    固定資產: record.fixedAssets.toString()
+                },
+                減退回及折讓: {
+                    進貨及費用: record.purchaseReturn.toString(),
+                    固定資產: record.purchaseReturnAssets.toString()
+                },
+                合計: {
+                    進貨及費用: (record.purchaseAndExpense - record.purchaseReturn).toString(),
+                    固定資產: (record.fixedAssets - record.purchaseReturnAssets).toString()
+                },
+                進口貨物金額: record.importAmount.toString()
+            };
+        }
+
+        return promises;
+    }
+
+    function save403DataToJobs() {
+        // 將 403 表格資料轉換回 result_json 格式並更新 Jobs
+        var promises = [];
+
+        // 按月份分組資料（因為一個 Job 對應一個月份的資料）
+        var monthDataMap = {};
+        currentTableData.forEach(function (record) {
+            monthDataMap[record.month] = record;
+        });
+
+        // 更新每個 Job 的 result_json
+        allJobs.forEach(function (job) {
+            if (!job.result_json) return;
+
+            var json = job.result_json;
+            var updatedJson = JSON.parse(JSON.stringify(json));  // 深拷貝原始 JSON
+            var hasUpdate = false;
+
+            // 檢查是否為多頁格式
+            if (json.頁面資料 && Array.isArray(json.頁面資料)) {
+                // 多頁格式：更新每一頁
+                json.頁面資料.forEach(function (pageData, pageIndex) {
+                    var monthPeriod = extractMonthPeriod(pageData.所屬年月份);
+                    
+                    if (monthPeriod && monthDataMap[monthPeriod.display]) {
+                        var record = monthDataMap[monthPeriod.display];
+                        update403PageData(updatedJson.頁面資料[pageIndex], record);
+                        hasUpdate = true;
+                    }
+                });
+            } else {
+                // 單頁格式
+                var monthPeriod = extractMonthPeriod(json.所屬年月份);
+                
+                if (monthPeriod && monthDataMap[monthPeriod.display]) {
+                    var record = monthDataMap[monthPeriod.display];
+                    update403PageData(updatedJson, record);
+                    hasUpdate = true;
+                }
+            }
+
+            // 如果有更新，發送請求
+            if (hasUpdate) {
+                var promise = $.ajax({
+                    url: API_BASE_URL + '/jobs/' + job.id + '/result',
+                    method: 'PATCH',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        ocr_result: updatedJson,
+                        status: 'COMPLETED',
+                        save_as_new_version: false
+                    })
+                });
+
+                promises.push(promise);
+            }
+        });
+
+        // 輔助函數：更新403單頁資料
+        function update403PageData(pageJson, record) {
+            pageJson.銷項 = {
+                一般稅額銷售額: {
+                    應稅: {
+                        三聯式: record.triplicateSales.toString(),
+                        二聯式: record.duplicateSales.toString(),
+                        三聯式發票: 0,  // 保持原有欄位
+                        收銀機發票銷售額: 0  // 保持原有欄位
+                    },
+                    零稅率銷售額: {
+                        經海關: record.customsSales.toString(),
+                        非經海關: record.nonCustomsSales.toString(),
+                        海關退回及折讓: record.returnZeroRate.toString()  // 零稅率退回
+                    },
+                    免稅: record.taxFreeSales.toString()
+                },
+                '特種稅額-合計': (record.specialTaxSales - record.returnSpecial).toString(),  // 403特有：反推合計（銷售額 - 退回）
+                '特種稅額-銷售額退回及折讓': record.returnSpecial.toString(),  // 403特有：特種稅額退回及折讓
+                其他: record.otherSales.toString(),
+                銷售額合計: record.totalSales.toString(),
+                銷項退回及折讓: record.returnGeneral.toString(),  // 一般銷項退回及折讓
+                '銷貨退回及折讓-零稅率': record.returnZeroRate.toString(),
+                '銷貨退回及折讓-特種': record.returnSpecial.toString(),
+                銷貨退回及折讓合計: record.returnTotal.toString(),
+                淨額: record.netAmount.toString()
+            };
+
+            // 🔧 修改：重新計算得扣抵和合計的關係
+            pageJson.進項 = {
+                得扣抵: {
+                    進貨及費用: record.purchaseAndExpense.toString(),
+                    固定資產: record.fixedAssets.toString()
+                },
+                減退回及折讓: {
+                    進貨及費用: record.purchaseReturn.toString(),
+                    固定資產: record.purchaseReturnAssets.toString()
+                },
+                合計: {
+                    進貨及費用: (record.purchaseAndExpense - record.purchaseReturn).toString(),
+                    固定資產: (record.fixedAssets - record.purchaseReturnAssets).toString()
+                },
+                進口貨物金額: record.importAmount.toString()
+            };
+        }
+
+        return promises;
+    }
+
+    function saveWithholdingDataToJobs() {
+        // 將扣繳憑單表格資料轉換回 result_json 格式並更新 Jobs
+        var promises = [];
+
+        // 按 Job ID 分組資料（每個 Job 只更新自己的資料）
+        var jobDataMap = {};
+        currentTableData.forEach(function (record) {
+            if (!record.jobId) {
+                console.warn('記錄缺少 jobId，跳過:', record);
+                return;
+            }
+
+            if (!jobDataMap[record.jobId]) {
+                jobDataMap[record.jobId] = [];
+            }
+
+            jobDataMap[record.jobId].push({
+                項目: record.itemName,
+                所得類別及代號: record.incomeType,
+                各類給付總額: record.totalAmount.toString(),
+                扣繳稅額: record.withholdingTax.toString()
+            });
+        });
+
+        console.log('按 Job ID 分組的資料:', jobDataMap);
+        
+        // 🔧 新增：驗證資料完整性
+        var totalRecords = Object.values(jobDataMap).reduce((sum, records) => sum + records.length, 0);
+        console.log('總記錄數驗證:', {
+            currentTableData: currentTableData.length,
+            jobDataMap: totalRecords,
+            allJobs: allJobs.length
+        });
+        
+        if (totalRecords !== currentTableData.length) {
+            console.error('❌ 資料分組錯誤！記錄數不匹配');
+            showNotification('資料處理錯誤，請重新載入頁面', 'danger');
+            return [];
+        }
+
+        // 更新每個 Job 的 result_json
+        allJobs.forEach(function (job) {
+            if (!job.result_json) return;
+
+            // 只更新有資料的 Job
+            if (!jobDataMap[job.id]) {
+                console.log('Job', job.id, '沒有對應的表格資料，跳過');
+                return;
+            }
+
+            var json = JSON.parse(JSON.stringify(job.result_json));  // 深拷貝
+            var updatedRecords = jobDataMap[job.id];
+
+            // 判斷是多頁還是單頁格式
+            if (json.頁面資料 && Array.isArray(json.頁面資料)) {
+                // 🔧 修復：多頁格式正確處理，按頁碼重新分配資料
+                console.log('Job', job.id, '多頁格式處理，原始頁數:', json.頁面資料.length);
+                console.log('Job', job.id, '更新記錄數:', updatedRecords.length);
+                
+                // 🆕 改進：按頁碼和記錄內容精確分組
+                var recordsByPage = {};
+                
+                // 先初始化所有頁面
+                json.頁面資料.forEach(function(pageData, pageIndex) {
+                    var pageNum = pageData.頁碼 || (pageIndex + 1);
+                    recordsByPage[pageNum] = [];
+                });
+                
+                // 將更新後的記錄分配到對應頁面
+                updatedRecords.forEach(function(record) {
+                    // 🔧 改進：使用更精確的匹配邏輯
+                    var matchingOriginalRecords = currentTableData.filter(function(r) {
+                        return r.jobId === job.id && 
+                               r.itemName === record.項目 && 
+                               r.incomeType === record.所得類別及代號;
+                    });
+                    
+                    if (matchingOriginalRecords.length > 0) {
+                        // 如果有多個匹配記錄，使用第一個的頁碼
+                        var pageNum = matchingOriginalRecords[0].頁碼 || 1;
+                        if (!recordsByPage[pageNum]) {
+                            recordsByPage[pageNum] = [];
+                        }
+                        recordsByPage[pageNum].push(record);
+                        console.log('分配記錄到第', pageNum, '頁:', record.項目, record.所得類別及代號);
+                    } else {
+                        // 找不到匹配記錄，分配到第一頁
+                        console.warn('找不到匹配的原始記錄，分配到第1頁:', record);
+                        if (!recordsByPage[1]) {
+                            recordsByPage[1] = [];
+                        }
+                        recordsByPage[1].push(record);
+                    }
+                });
+                
+                // 更新每一頁的資料
+                json.頁面資料.forEach(function(pageData, pageIndex) {
+                    var pageNum = pageData.頁碼 || (pageIndex + 1);
+                    var newRecords = recordsByPage[pageNum] || [];
+                    
+                    // 🔧 重要：保留原始頁面的其他資訊，只更新 records
+                    pageData.records = newRecords;
+                    
+                    console.log('更新第', pageNum, '頁，記錄數:', newRecords.length);
+                    if (newRecords.length > 0) {
+                        console.log('  記錄詳情:', newRecords.map(r => `${r.項目}:${r.各類給付總額}`));
+                    }
+                });
+                
+            } else {
+                // 單頁格式：直接更新 records
+                console.log('Job', job.id, '單頁格式處理，記錄數:', updatedRecords.length);
+                json.records = updatedRecords;
+            }
+
+            // 發送更新請求
+            var promise = $.ajax({
+                url: API_BASE_URL + '/jobs/' + job.id + '/result',
+                method: 'PATCH',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    ocr_result: json,
+                    status: 'COMPLETED',
+                    save_as_new_version: false
+                })
+            }).done(function(response) {
+                console.log('✅ Job', job.id, '更新成功:', response);
+            }).fail(function(xhr, status, error) {
+                console.error('❌ Job', job.id, '更新失敗:', {
+                    status: xhr.status,
+                    statusText: xhr.statusText,
+                    responseText: xhr.responseText,
+                    error: error
+                });
+                
+                // 顯示詳細錯誤訊息
+                var errorMsg = '儲存失敗';
+                try {
+                    var errorResponse = JSON.parse(xhr.responseText);
+                    errorMsg = errorResponse.error || errorResponse.detail || errorMsg;
+                } catch (e) {
+                    errorMsg = xhr.statusText || errorMsg;
+                }
+                
+                showNotification('Job ' + job.id + ' 儲存失敗: ' + errorMsg, 'danger');
+            });
+
+            promises.push(promise);
+        });
+
+        return promises;
+    }
+
+    function createVersion() {
+        var filename = $('#version-filename').val();
+        var notes = $('#version-notes').val();
+        var confirmed = $('#amount-confirm').prop('checked');
+
+        if (!filename) {
+            showNotification('請填寫檔案名稱', 'danger');
+            return;
+        }
+        if (!confirmed) {
+            showNotification('請確認所有金額無誤後再建立版本', 'danger');
+            return;
+        }
+
+        if (!caseId) {
+            showNotification('未選擇案件，無法建立版本', 'danger');
+            return;
+        }
+
+        // 在建立版本前，先同步表格資料回 currentTableData
+        syncTableDataToCurrentData();
+
+        showLoading();
+
+        // 判斷表格類型（根據顯示的表格和資料）
+        var tableType = '';
+
+        // Debug: 檢查表格顯示狀態
+        console.log('=== 建立版本 Debug ===');
+        console.log('401表格是否顯示:', $('#table-401').is(':visible'));
+        console.log('扣繳憑單表格是否顯示:', $('#table-withholding').is(':visible'));
+        console.log('withholdingView:', withholdingView);
+        console.log('currentDocType:', currentDocType);
+        console.log('allJobs 數量:', allJobs ? allJobs.length : 0);
+        if (allJobs && allJobs.length > 0) {
+            console.log('第一個 Job 的 document_type:', allJobs[0].document_type);
+            console.log('第一個 Job 的 detected_stream:', allJobs[0].detected_stream);
+        }
+
+        if ($('#table-401').is(':visible') || $('#table-403').is(':visible')) {
+            // 401/403 表格
+            console.log('判斷為 401/403 表格');
+            // 檢查第一個 Job 的 document_type
+            if (allJobs && allJobs.length > 0) {
+                var firstJobType = allJobs[0].document_type;
+                if (firstJobType === '403') {
+                    tableType = '403';
+                } else {
+                    tableType = '401';
+                }
+            } else {
+                // 從 currentDocType 判斷
+                if (currentDocType && currentDocType.includes('403')) {
+                    tableType = '403';
+                } else {
+                    tableType = '401';
+                }
+            }
+        } else if ($('#table-withholding').is(':visible')) {
+            // 扣繳憑單表格（包括股利憑單，統一歸類為各類所得扣繳憑單）
+            console.log('判斷為扣繳憑單表格');
+
+            // 根據 withholdingView 判斷收支方向（股利憑單與一般扣繳憑單使用相同的 tableType）
+            if (withholdingView === 'income') {
+                tableType = 'withholding_income';
+            } else {
+                tableType = 'withholding_expense';
+            }
+        } else {
+            // 預設（不應該發生）
+            console.error('無法判斷表格類型 - 兩個表格都不可見！');
+            tableType = '401';
+        }
+
+        console.log('最終判斷的 table_type:', tableType);
+        console.log('======================');
+
+        // 收集 job IDs（如果是從 Jobs 載入的話）
+        var jobIdsList = [];
+        if (jobIds && jobIds.length > 0) {
+            jobIdsList = jobIds;
+        } else if (allJobs && allJobs.length > 0) {
+            jobIdsList = allJobs.map(function (job) { return job.id; });
+        }
+
+        // 準備版本資料
+        var versionData = {
+            case_id: caseId,
+            file_name: filename + '.xlsx',
+            table_type: tableType,
+            job_ids: jobIdsList,
+            data: currentTableData,
+            notes: notes,
+            record_count: currentTableData.length
+        };
+
+        $.ajax({
+            url: API_BASE_URL + '/versions',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(versionData),
+            success: function (response) {
+                hideLoading();
+                showNotification('版本建立成功：' + filename + '.xlsx', 'success');
+                $('#versionModal').modal('hide');
+                $('#version-form')[0].reset();
+
+                // 導航到歷史紀錄頁面
+                setTimeout(function () {
+                    window.location.href = '/history?case_id=' + caseId;
+                }, 1500);
+            },
+            error: function (xhr, status, error) {
+                hideLoading();
+                console.error('建立版本失敗:', error);
+                showNotification('建立版本失敗，請稍後再試', 'danger');
+            }
+        });
+    }
+
+    // ============ 表格渲染函數 ============
+
+    function render401Table() {
+        if (currentTableData.length === 0) {
+            // 如果沒有資料，顯示提示訊息
+            $('#sales-tbody').html('<tr><td colspan="14" class="text-center text-muted" style="padding: 40px;">無資料</td></tr>');
+            $('#purchase-tbody').html('<tr><td colspan="8" class="text-center text-muted" style="padding: 40px;">無資料</td></tr>');
+            return;
+        }
+
+        var records = currentTableData;
+
+        // 🆕 檢查是否有任何記錄有警告
+        var hasWarnings = records.some(r => r.warnings && r.warnings.length > 0 && !r.warnings_acknowledged);
+        
+        // 🆕 動態調整表頭（加到第一行，使用 rowspan="3"）
+        var $thead = $('#sales-table thead');
+        var $firstRow = $thead.find('tr:first');
+        
+        if (hasWarnings && $firstRow.find('th:last-child').text().trim() !== '警告') {
+            $firstRow.append('<th rowspan="3" style="width: 80px; text-align: center; vertical-align: middle;">警告</th>');
+        } else if (!hasWarnings && $firstRow.find('th:last-child').text().trim() === '警告') {
+            $firstRow.find('th:last-child').remove();
+        }
+
+        // Render sales table
+        var salesHtml = '';
+        var salesTotals = {
+            triplicateSales: 0, duplicateSales: 0, nonCustomsSales: 0, customsSales: 0,
+            taxFreeSales: 0, specialTaxSales: 0, otherSales: 0, totalSales: 0,
+            returnGeneral: 0, returnZeroRate: 0, returnSpecial: 0, returnTotal: 0, netAmount: 0
+        };
+
+        records.forEach(function (r) {
+            // 🆕 檢查是否有警告且未確認
+            var warningCell = '';
+            if (r.warnings && r.warnings.length > 0 && !r.warnings_acknowledged) {
+                var warningText = r.warnings.join('、');
+                warningCell = '<td class="text-center">' +
+                    '<i class="fa fa-exclamation-triangle warning-icon" ' +
+                    'style="color: #f39c12; cursor: pointer; font-size: 18px;" ' +
+                    'data-month="' + r.month + '" ' +
+                    'data-warnings="' + warningText + '" ' +
+                    'title="點擊查看詳情"></i>' +
+                    '</td>';
+            } else if (hasWarnings) {
+                warningCell = '<td></td>';
+            }
+            
+            salesHtml += '<tr>' +
+                '<td class="text-center"><strong>' + r.month + '</strong></td>' +
+                '<td class="text-right">' + formatNumber(r.triplicateSales) + '</td>' +
+                '<td class="text-right">' + formatNumber(r.duplicateSales) + '</td>' +
+                '<td class="text-right">' + formatNumber(r.nonCustomsSales) + '</td>' +
+                '<td class="text-right">' + formatNumber(r.customsSales) + '</td>' +
+                '<td class="text-right" style="border-right: 2px solid #dee2e6;">' + formatNumber(r.taxFreeSales) + '</td>' +
+                '<td class="text-right">' + formatNumber(r.specialTaxSales) + '</td>' +
+                '<td class="text-right">' + formatNumber(r.otherSales) + '</td>' +
+                '<td class="text-right"><strong>' + formatNumber(r.totalSales) + '</strong></td>' +
+                '<td class="text-right" style="border-left: 2px solid #dee2e6;">' + formatNumber(r.returnGeneral) + '</td>' +
+                '<td class="text-right">' + formatNumber(r.returnZeroRate) + '</td>' +
+                '<td class="text-right">' + formatNumber(r.returnSpecial) + '</td>' +
+                '<td class="text-right"><strong>' + formatNumber(r.returnTotal) + '</strong></td>' +
+                '<td class="text-right"><strong>' + formatNumber(r.netAmount) + '</strong></td>' +
+                warningCell +
+                '</tr>';
+
+            for (var key in salesTotals) {
+                salesTotals[key] += r[key] || 0;
+            }
+        });
+
+        // Add totals row - 401
+        var totalWarningCell = hasWarnings ? '<td></td>' : '';
+        salesHtml += '<tr style="background: #e8f4f8; font-weight: bold; border-top: 2px solid #3498db;">' +
+            '<td class="text-center">合計</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.triplicateSales) + '</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.duplicateSales) + '</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.nonCustomsSales) + '</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.customsSales) + '</td>' +
+            '<td class="text-right" style="border-right: 2px solid #dee2e6;">' + formatNumber(salesTotals.taxFreeSales) + '</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.specialTaxSales) + '</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.otherSales) + '</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.totalSales) + '</td>' +
+            '<td class="text-right" style="border-left: 2px solid #dee2e6;">' + formatNumber(salesTotals.returnGeneral) + '</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.returnZeroRate) + '</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.returnSpecial) + '</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.returnTotal) + '</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.netAmount) + '</td>' +
+            totalWarningCell +
+            '</tr>';
+
+        $('#sales-tbody').html(salesHtml);
+        
+        // 🆕 綁定警告圖示點擊事件
+        $('.warning-icon').click(function() {
+            var month = $(this).data('month');
+            var warnings = $(this).data('warnings');
+            showWarningDialog(month, warnings);
+        });
+
+        // Render purchase table
+        var purchaseHtml = '';
+        var purchaseTotals = {
+            purchaseReturn: 0, purchaseReturnAssets: 0, 
+            purchaseTotal: 0, assetsTotal: 0, importAmount: 0  // 🔧 修改：移除不需要的欄位，保留需要的欄位
+        };
+
+        records.forEach(function (r) {
+            // 🔧 修改：現在得扣抵是計算值，合計是原始值
+            // 得扣抵 = 合計 + 退回折讓
+            var deductibleExpense = (r.purchaseTotal || 0) + (r.purchaseReturn || 0);
+            var deductibleAsset = (r.assetsTotal || 0) + (r.purchaseReturnAssets || 0);
+
+            purchaseHtml += '<tr>' +
+                '<td class="text-center"><strong>' + r.month + '</strong></td>' +
+                '<td class="text-right"><strong>' + formatNumber(deductibleExpense) + '</strong></td>' +
+                '<td class="text-right" style="border-right: 2px solid #dee2e6;"><strong>' + formatNumber(deductibleAsset) + '</strong></td>' +
+                '<td class="text-right">' + formatNumber(r.purchaseReturn) + '</td>' +
+                '<td class="text-right" style="border-right: 2px solid #dee2e6;">' + formatNumber(r.purchaseReturnAssets) + '</td>' +
+                '<td class="text-right">' + formatNumber(r.purchaseTotal) + '</td>' +
+                '<td class="text-right" style="border-right: 2px solid #dee2e6;">' + formatNumber(r.assetsTotal) + '</td>' +
+                '<td class="text-right">' + formatNumber(r.importAmount) + '</td>' +
+                '</tr>';
+
+            // 🔧 修改：累加數值 - 現在累加合計和退回折讓，計算得扣抵
+            purchaseTotals.purchaseReturn += r.purchaseReturn || 0;
+            purchaseTotals.purchaseReturnAssets += r.purchaseReturnAssets || 0;
+            purchaseTotals.purchaseTotal += r.purchaseTotal || 0;
+            purchaseTotals.assetsTotal += r.assetsTotal || 0;
+            purchaseTotals.importAmount += r.importAmount || 0;
+        });
+
+        // 🔧 修改：總計列計算 - 得扣抵 = 合計 + 退回折讓
+        var deductibleExpenseSum = purchaseTotals.purchaseTotal + purchaseTotals.purchaseReturn;
+        var deductibleAssetSum = purchaseTotals.assetsTotal + purchaseTotals.purchaseReturnAssets;
+
+        purchaseHtml += '<tr style="background: #d5f4e6; font-weight: bold; border-top: 2px solid #27ae60;">' +
+            '<td class="text-center">合計</td>' +
+            '<td class="text-right">' + formatNumber(deductibleExpenseSum) + '</td>' +
+            '<td class="text-right" style="border-right: 2px solid #dee2e6;">' + formatNumber(deductibleAssetSum) + '</td>' +
+            '<td class="text-right">' + formatNumber(purchaseTotals.purchaseReturn) + '</td>' +
+            '<td class="text-right" style="border-right: 2px solid #dee2e6;">' + formatNumber(purchaseTotals.purchaseReturnAssets) + '</td>' +
+            '<td class="text-right">' + formatNumber(purchaseTotals.purchaseTotal) + '</td>' +
+            '<td class="text-right" style="border-right: 2px solid #dee2e6;">' + formatNumber(purchaseTotals.assetsTotal) + '</td>' +
+            '<td class="text-right">' + formatNumber(purchaseTotals.importAmount) + '</td>' +
+            '</tr>';
+
+        $('#purchase-tbody').html(purchaseHtml);
+
+        // 🆕 檢測表格滾動狀態
+        setTimeout(function() {
+            checkTableScroll();
+        }, 100);
+    }
+
+    function render403Table() {
+        if (currentTableData.length === 0) {
+            // 如果沒有資料，顯示提示訊息
+            $('#sales-tbody-403').html('<tr><td colspan="14" class="text-center text-muted" style="padding: 40px;">無資料</td></tr>');
+            $('#purchase-tbody-403').html('<tr><td colspan="8" class="text-center text-muted" style="padding: 40px;">無資料</td></tr>');
+            return;
+        }
+
+        var records = currentTableData;
+
+        // 🆕 檢查是否有任何記錄有警告
+        var hasWarnings = records.some(r => r.warnings && r.warnings.length > 0 && !r.warnings_acknowledged);
+        
+        // 🆕 動態調整表頭（加到第一行，使用 rowspan="3"）
+        var $thead = $('#sales-table-403 thead');
+        var $firstRow = $thead.find('tr:first');
+        
+        if (hasWarnings && $firstRow.find('th:last-child').text().trim() !== '警告') {
+            $firstRow.append('<th rowspan="3" style="width: 80px; text-align: center; vertical-align: middle;">警告</th>');
+        } else if (!hasWarnings && $firstRow.find('th:last-child').text().trim() === '警告') {
+            $firstRow.find('th:last-child').remove();
+        }
+
+        // Render sales table (403)
+        var salesHtml = '';
+        var salesTotals = {
+            triplicateSales: 0, duplicateSales: 0, nonCustomsSales: 0, customsSales: 0,
+            taxFreeSales: 0, specialTaxSales: 0, otherSales: 0, totalSales: 0,
+            returnGeneral: 0, returnZeroRate: 0, returnSpecial: 0, returnTotal: 0, netAmount: 0
+        };
+
+        records.forEach(function (r) {
+            // 🆕 檢查是否有警告且未確認
+            var warningCell = '';
+            if (r.warnings && r.warnings.length > 0 && !r.warnings_acknowledged) {
+                var warningText = r.warnings.join('、');
+                warningCell = '<td class="text-center">' +
+                    '<i class="fa fa-exclamation-triangle warning-icon" ' +
+                    'style="color: #f39c12; cursor: pointer; font-size: 18px;" ' +
+                    'data-month="' + r.month + '" ' +
+                    'data-warnings="' + warningText + '" ' +
+                    'title="點擊查看詳情"></i>' +
+                    '</td>';
+            } else if (hasWarnings) {
+                warningCell = '<td></td>';
+            }
+            
+            salesHtml += '<tr>' +
+                '<td class="text-center"><strong>' + r.month + '</strong></td>' +
+                '<td class="text-right">' + formatNumber(r.triplicateSales) + '</td>' +
+                '<td class="text-right">' + formatNumber(r.duplicateSales) + '</td>' +
+                '<td class="text-right">' + formatNumber(r.nonCustomsSales) + '</td>' +
+                '<td class="text-right">' + formatNumber(r.customsSales) + '</td>' +
+                '<td class="text-right" style="border-right: 2px solid #dee2e6;">' + formatNumber(r.taxFreeSales) + '</td>' +
+                '<td class="text-right">' + formatNumber(r.specialTaxSales) + '</td>' +
+                '<td class="text-right">' + formatNumber(r.otherSales) + '</td>' +
+                '<td class="text-right"><strong>' + formatNumber(r.totalSales) + '</strong></td>' +
+                '<td class="text-right" style="border-left: 2px solid #dee2e6;">' + formatNumber(r.returnGeneral) + '</td>' +
+                '<td class="text-right">' + formatNumber(r.returnZeroRate) + '</td>' +
+                '<td class="text-right">' + formatNumber(r.returnSpecial) + '</td>' +
+                '<td class="text-right"><strong>' + formatNumber(r.returnTotal) + '</strong></td>' +
+                '<td class="text-right"><strong>' + formatNumber(r.netAmount) + '</strong></td>' +
+                warningCell +
+                '</tr>';
+
+            for (var key in salesTotals) {
+                salesTotals[key] += r[key] || 0;
+            }
+        });
+
+        // Add totals row - 403
+        var totalWarningCell = hasWarnings ? '<td></td>' : '';
+        salesHtml += '<tr style="background: #e8f4f8; font-weight: bold; border-top: 2px solid #3498db;">' +
+            '<td class="text-center">合計</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.triplicateSales) + '</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.duplicateSales) + '</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.nonCustomsSales) + '</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.customsSales) + '</td>' +
+            '<td class="text-right" style="border-right: 2px solid #dee2e6;">' + formatNumber(salesTotals.taxFreeSales) + '</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.specialTaxSales) + '</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.otherSales) + '</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.totalSales) + '</td>' +
+            '<td class="text-right" style="border-left: 2px solid #dee2e6;">' + formatNumber(salesTotals.returnGeneral) + '</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.returnZeroRate) + '</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.returnSpecial) + '</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.returnTotal) + '</td>' +
+            '<td class="text-right">' + formatNumber(salesTotals.netAmount) + '</td>' +
+            totalWarningCell +
+            '</tr>';
+
+        $('#sales-tbody-403').html(salesHtml);
+        
+        // 🆕 綁定警告圖示點擊事件
+        $('.warning-icon').click(function() {
+            var month = $(this).data('month');
+            var warnings = $(this).data('warnings');
+            showWarningDialog(month, warnings);
+        });
+
+        // Render purchase table (403) - 與401相同的邏輯
+        var purchaseHtml = '';
+        var purchaseTotals = {
+            purchaseReturn: 0, purchaseReturnAssets: 0, 
+            purchaseTotal: 0, assetsTotal: 0, importAmount: 0
+        };
+
+        records.forEach(function (r) {
+            // 🔧 修改：現在得扣抵是計算值，合計是原始值
+            // 得扣抵 = 合計 + 退回折讓
+            var deductibleExpense = (r.purchaseTotal || 0) + (r.purchaseReturn || 0);
+            var deductibleAsset = (r.assetsTotal || 0) + (r.purchaseReturnAssets || 0);
+
+            purchaseHtml += '<tr>' +
+                '<td class="text-center"><strong>' + r.month + '</strong></td>' +
+                '<td class="text-right"><strong>' + formatNumber(deductibleExpense) + '</strong></td>' +
+                '<td class="text-right" style="border-right: 2px solid #dee2e6;"><strong>' + formatNumber(deductibleAsset) + '</strong></td>' +
+                '<td class="text-right">' + formatNumber(r.purchaseReturn) + '</td>' +
+                '<td class="text-right" style="border-right: 2px solid #dee2e6;">' + formatNumber(r.purchaseReturnAssets) + '</td>' +
+                '<td class="text-right">' + formatNumber(r.purchaseTotal) + '</td>' +
+                '<td class="text-right" style="border-right: 2px solid #dee2e6;">' + formatNumber(r.assetsTotal) + '</td>' +
+                '<td class="text-right">' + formatNumber(r.importAmount) + '</td>' +
+                '</tr>';
+
+            // 🔧 修改：累加數值 - 現在累加合計和退回折讓，計算得扣抵
+            purchaseTotals.purchaseReturn += r.purchaseReturn || 0;
+            purchaseTotals.purchaseReturnAssets += r.purchaseReturnAssets || 0;
+            purchaseTotals.purchaseTotal += r.purchaseTotal || 0;
+            purchaseTotals.assetsTotal += r.assetsTotal || 0;
+            purchaseTotals.importAmount += r.importAmount || 0;
+        });
+
+        // 🔧 修改：總計列計算 - 得扣抵 = 合計 + 退回折讓
+        var deductibleExpenseSum = purchaseTotals.purchaseTotal + purchaseTotals.purchaseReturn;
+        var deductibleAssetSum = purchaseTotals.assetsTotal + purchaseTotals.purchaseReturnAssets;
+
+        purchaseHtml += '<tr style="background: #d5f4e6; font-weight: bold; border-top: 2px solid #27ae60;">' +
+            '<td class="text-center">合計</td>' +
+            '<td class="text-right">' + formatNumber(deductibleExpenseSum) + '</td>' +
+            '<td class="text-right" style="border-right: 2px solid #dee2e6;">' + formatNumber(deductibleAssetSum) + '</td>' +
+            '<td class="text-right">' + formatNumber(purchaseTotals.purchaseReturn) + '</td>' +
+            '<td class="text-right" style="border-right: 2px solid #dee2e6;">' + formatNumber(purchaseTotals.purchaseReturnAssets) + '</td>' +
+            '<td class="text-right">' + formatNumber(purchaseTotals.purchaseTotal) + '</td>' +
+            '<td class="text-right" style="border-right: 2px solid #dee2e6;">' + formatNumber(purchaseTotals.assetsTotal) + '</td>' +
+            '<td class="text-right">' + formatNumber(purchaseTotals.importAmount) + '</td>' +
+            '</tr>';
+
+        $('#purchase-tbody-403').html(purchaseHtml);
+
+        // 🆕 檢測表格滾動狀態
+        setTimeout(function() {
+            checkTableScroll();
+        }, 100);
+    }
+
+    function renderWithholdingTable() {
+        var isFileSourceVisible = $('.file-source-column').is(':visible');
+        var isActionVisible = $('.action-column').is(':visible');
+
+
+        // 🆕 控制頁碼欄位的顯示
+        // - 單一檔案模式：有多頁時顯示
+        // - 全部檔案模式：當檔案來源欄位顯示時也顯示頁碼
+        var isPageNumberVisible = false;
+        if (viewMode === 'single' && currentTableData.length > 0) {
+            var totalPages = currentTableData[0].總頁數 || 1;
+            isPageNumberVisible = totalPages > 1;
+        } else if (viewMode === 'all' && isFileSourceVisible) {
+            // 全部檔案模式：檔案來源顯示時，頁碼也顯示
+            isPageNumberVisible = true;
+        }
+
+        // 顯示/隱藏頁碼欄位
+        if (isPageNumberVisible) {
+            $('.page-number-column').show();
+        } else {
+            $('.page-number-column').hide();
+        }
+
+        var colspanCount = 7;
+        if (isFileSourceVisible) colspanCount++;
+        if (isPageNumberVisible) colspanCount++;
+        if (isActionVisible) colspanCount++;
+
+        if (currentTableData.length === 0) {
+            $('#withholding-tbody').html('<tr><td colspan="' + colspanCount + '" class="text-center text-muted" style="padding: 40px;">無資料</td></tr>');
+            return;
+        }
+
+        var records = currentTableData;
+        var html = '';
+
+        // 🆕 根據 viewMode 選擇渲染方式
+        if (viewMode === 'single') {
+            // 單一檔案模式：先頁數，再項目
+            html = renderByPageThenItem(records, isFileSourceVisible, isPageNumberVisible, isActionVisible);
+        } else {
+            // 全部檔案模式：只按項目
+            html = renderByItemOnly(records, isFileSourceVisible, isPageNumberVisible, isActionVisible);
+        }
+
+        $('#withholding-tbody').html(html);
+
+        // 綁定刪除按鈕事件
+        $('.delete-record-btn').click(function () {
+            var index = $(this).data('index');
+            deleteRecord(index);
+        });
+
+        // 綁定新增按鈕事件
+        $('.add-record-btn').click(function () {
+            var itemName = $(this).data('item');
+            showAddRecordDialog(itemName);
+        });
+
+        // 🆕 綁定項目下拉選單改變事件
+        $('.item-name-select').change(function () {
+            var $row = $(this).closest('tr');
+            var dataIndex = parseInt($row.attr('data-index'));
+            var newItemName = $(this).val();
+            
+            // 更新 currentTableData 中的項目名稱
+            if (currentTableData[dataIndex]) {
+                currentTableData[dataIndex].itemName = newItemName;
+                console.log('項目已更新:', dataIndex, '→', newItemName);
+            }
+            
+            // 提示使用者可能需要重新排序
+            // 注意：不自動重新排序，因為會打斷使用者的編輯流程
+            // 使用者可以在儲存時自動排序
+        });
+
+        // 🆕 檢測表格是否需要滾動並添加指示器
+        setTimeout(function() {
+            checkTableScroll();
+        }, 100);
+    }
+
+    // 🆕 檢測表格滾動狀態
+    function checkTableScroll() {
+        $('.table-responsive, .table-container').each(function() {
+            var $container = $(this);
+            var container = $container[0];
+            
+            if (container && container.scrollWidth > container.clientWidth) {
+                $container.addClass('has-scroll');
+            } else {
+                $container.removeClass('has-scroll');
+            }
+        });
+    }
+
+    // 🆕 輔助函數：只按項目渲染（全部檔案模式）
+    // 排序邏輯：項目排序 > 檔名排序 > 檔案頁碼排序
+    function renderByItemOnly(records, isFileSourceVisible, isPageNumberVisible, isActionVisible) {
+        var html = '';
+        var totals = { totalAmount: 0, withholdingTax: 0 };
+        var colspanCount = 7;
+        if (isFileSourceVisible) colspanCount++;
+        if (isPageNumberVisible) colspanCount++;
+        if (isActionVisible) colspanCount++;
+
+        // 輔助函數：獲取記錄的檔案名稱
+        function getFileName(r) {
+            if (r.jobId && allJobs) {
+                var job = allJobs.find(function (j) { return j.id === r.jobId; });
+                if (job) {
+                    return job.original_filename || '';
+                }
+            }
+            return '';
+        }
+
+        // 按項目分組，同時記錄檔名
+        var groupedRecords = {};
+        records.forEach(function (r, index) {
+            var itemName = r.itemName || '未分類';
+            if (!groupedRecords[itemName]) {
+                groupedRecords[itemName] = {
+                    records: [],
+                    subtotal: { totalAmount: 0, withholdingTax: 0 }
+                };
+            }
+            r._index = index;  // 記錄在 currentTableData 中的索引
+            r._fileName = getFileName(r);  // 預先獲取檔名以便排序
+            groupedRecords[itemName].records.push(r);
+            groupedRecords[itemName].subtotal.totalAmount += r.totalAmount;
+            groupedRecords[itemName].subtotal.withholdingTax += r.withholdingTax;
+        });
+
+        // 定義項目排序順序
+        var itemOrder = {
+            '薪資': 1,
+            '執行業務報酬': 2,
+            '利息': 3,
+            '租賃': 4,
+            '權利金': 5,
+            '股利': 6,
+            '競技、競賽及機會中獎': 7,
+            '退職所得': 8,
+            '財產交易': 9,
+            '其他所得': 10,
+            '退休金員工自提數': 11
+        };
+
+        // 按項目順序渲染
+        var sortedItems = Object.keys(groupedRecords).sort(function (a, b) {
+            var orderA = itemOrder[a] || 999;
+            var orderB = itemOrder[b] || 999;
+            return orderA - orderB;
+        });
+
+        sortedItems.forEach(function (itemName) {
+            var group = groupedRecords[itemName];
+
+            // 🆕 在每個項目組內，按檔名排序，再按頁碼排序，最後按憑單序號排序
+            group.records.sort(function (a, b) {
+                // 先比較檔名（字母順序）
+                var fileNameCompare = (a._fileName || '').localeCompare(b._fileName || '');
+                if (fileNameCompare !== 0) {
+                    return fileNameCompare;
+                }
+                // 檔名相同，再比較頁碼（數字順序）
+                var pageA = a.頁碼 || 1;
+                var pageB = b.頁碼 || 1;
+                if (pageA !== pageB) {
+                    return pageA - pageB;
+                }
+                // 🆕 頁碼相同，比較憑單序號（股利憑單用）
+                var seqA = a.憑單序號 || 0;
+                var seqB = b.憑單序號 || 0;
+                return seqA - seqB;
+            });
+
+            // 渲染該項目的所有記錄
+            group.records.forEach(function (r) {
+                // 使用預先獲取的檔名
+                var fileName = r._fileName;
+
+                // 刪除按鈕（只在編輯模式下顯示）
+                var deleteBtn = isActionVisible ?
+                    '<td class="text-center action-column">' +
+                    '<button class="btn btn-danger btn-xs delete-record-btn" data-index="' + r._index + '" title="刪除此記錄">' +
+                    '<i class="fa fa-trash"></i>' +
+                    '</button>' +
+                    '</td>' : '';
+
+                // 🆕 項目欄位：編輯模式下顯示下拉選單，否則顯示文字
+                var itemCell = '';
+                if (isActionVisible) {
+                    // 編輯模式：下拉選單
+                    itemCell = '<td class="item-name-cell">' +
+                        '<select class="form-control input-sm item-name-select" style="width: 100%;">' +
+                        '<option value="薪資"' + (r.itemName === '薪資' ? ' selected' : '') + '>薪資</option>' +
+                        '<option value="執行業務報酬"' + (r.itemName === '執行業務報酬' ? ' selected' : '') + '>執行業務報酬</option>' +
+                        '<option value="利息"' + (r.itemName === '利息' ? ' selected' : '') + '>利息</option>' +
+                        '<option value="租賃"' + (r.itemName === '租賃' ? ' selected' : '') + '>租賃</option>' +
+                        '<option value="權利金"' + (r.itemName === '權利金' ? ' selected' : '') + '>權利金</option>' +
+                        '<option value="股利"' + (r.itemName === '股利' ? ' selected' : '') + '>股利</option>' +
+                        '<option value="競技、競賽及機會中獎"' + (r.itemName === '競技、競賽及機會中獎' ? ' selected' : '') + '>競技、競賽及機會中獎</option>' +
+                        '<option value="退職所得"' + (r.itemName === '退職所得' ? ' selected' : '') + '>退職所得</option>' +
+                        '<option value="財產交易"' + (r.itemName === '財產交易' ? ' selected' : '') + '>財產交易</option>' +
+                        '<option value="其他所得"' + (r.itemName === '其他所得' ? ' selected' : '') + '>其他所得</option>' +
+                        '<option value="退休金員工自提數"' + (r.itemName === '退休金員工自提數' ? ' selected' : '') + '>退休金員工自提數</option>' +
+                        '</select>' +
+                        '</td>';
+                } else {
+                    // 檢視模式：純文字
+                    itemCell = '<td>' + r.itemName + '</td>';
+                }
+
+                html += '<tr data-job-id="' + (r.jobId || '') + '" data-index="' + r._index + '">' +
+                    (isFileSourceVisible ? '<td class="file-source-column" style="font-size: 12px; color: #666;">' + fileName + '</td>' : '') +
+                    (isPageNumberVisible ? '<td class="text-center page-number-column">' + formatPageNumber(r) + '</td>' : '') +
+                    itemCell +
+                    '<td class="text-center">' + (r.index ? '<span class="badge badge-default">' + r.index + '</span>' : '-') + '</td>' +
+                    '<td>' + r.payerName + '</td>' +
+                    '<td>' + r.incomeType + '</td>' +
+                    '<td class="text-right"><strong>' + formatNumber(r.totalAmount) + '</strong></td>' +
+                    '<td class="text-right">' + formatNumber(r.withholdingTax) + '</td>' +
+                    '<td class="text-center tax-rate-column">' + 
+                        calculateTaxRate(r.totalAmount, r.withholdingTax) + 
+                    '</td>' +
+                    deleteBtn +
+                    '</tr>';
+
+                totals.totalAmount += r.totalAmount;
+                totals.withholdingTax += r.withholdingTax;
+            });
+
+            // 新增記錄按鈕（只在編輯模式下顯示）
+            if (isActionVisible) {
+                var addBtnColspan = colspanCount;
+                html += '<tr class="add-record-row" style="background: #f9f9f9;">' +
+                    '<td colspan="' + addBtnColspan + '" style="padding: 8px; text-align: left;">' +
+                    '<button class="btn btn-success btn-sm add-record-btn" data-item="' + itemName + '">' +
+                    '<i class="fa fa-plus"></i> 新增' + itemName + '記錄' +
+                    '</button>' +
+                    '</td>' +
+                    '</tr>';
+            }
+
+            // 如果該項目有記錄，新增項目總額列（全部檔案模式保留此功能）
+            if (group.records.length >= 1) {
+                // 計算 colspan：總欄位數 - 給付總額 - 扣繳稅額 - 稅率欄位 - (操作欄位，如果有的話)
+                var subtotalColspan = colspanCount - 3 - (isActionVisible ? 1 : 0);
+                html += '<tr class="subtotal-row" style="background: #e8f4f8; font-weight: bold; border-top: 2px solid #3498db;">' +
+                    '<td colspan="' + subtotalColspan + '" class="text-right" style="background: #e8f4f8;">' + itemName + '總額</td>' +
+                    '<td class="text-right" style="background: #e8f4f8;">' + formatNumber(group.subtotal.totalAmount) + '</td>' +
+                    '<td class="text-right" style="background: #e8f4f8;">' + formatNumber(group.subtotal.withholdingTax) + '</td>' +
+                    '<td class="tax-rate-column text-center" style="background: #e8f4f8;">' + 
+                        calculateTaxRate(group.subtotal.totalAmount, group.subtotal.withholdingTax) + 
+                    '</td>' +
+                    (isActionVisible ? '<td class="action-column" style="background: #fff; border-left: 1px solid #ddd;"></td>' : '') +
+                    '</tr>';
+            }
+        });
+
+        // Add totals row
+        var totalLabel = withholdingView === 'expense' ? '本期給付合計' : '本期收入合計';
+        // 計算 colspan：總欄位數 - 給付總額 - 扣繳稅額 - 稅率欄位 - (操作欄位，如果有的話)
+        var totalColspan = colspanCount - 3 - (isActionVisible ? 1 : 0);
+        html += '<tr style="background: #d4edda; font-weight: bold; border-top: 3px solid #28a745;">' +
+            '<td colspan="' + totalColspan + '" class="text-right" style="font-size: 16px; background: #d4edda;">' + totalLabel + '</td>' +
+            '<td class="text-right" style="font-size: 16px; background: #d4edda;">' + formatNumber(totals.totalAmount) + '</td>' +
+            '<td class="text-right" style="font-size: 16px; background: #d4edda;">' + formatNumber(totals.withholdingTax) + '</td>' +
+            '<td class="tax-rate-column text-center" style="font-size: 16px; background: #d4edda;">' + 
+                calculateTaxRate(totals.totalAmount, totals.withholdingTax) + 
+            '</td>' +
+            (isActionVisible ? '<td class="action-column" style="background: #fff; border-left: 1px solid #ddd;"></td>' : '') +
+            '</tr>';
+
+        return html;  // 🔧 回傳 HTML 而不是直接設定
+    }
+
+    // 🆕 輔助函數：先按頁數再按項目渲染（單一檔案模式）
+    function renderByPageThenItem(records, isFileSourceVisible, isPageNumberVisible, isActionVisible) {
+        var html = '';
+        var totals = { totalAmount: 0, withholdingTax: 0 };
+        var colspanCount = 7;
+        if (isFileSourceVisible) colspanCount++;
+        if (isPageNumberVisible) colspanCount++;
+        if (isActionVisible) colspanCount++;
+
+        // 定義項目排序順序
+        var itemOrder = {
+            '薪資': 1,
+            '執行業務報酬': 2,
+            '利息': 3,
+            '租賃': 4,
+            '權利金': 5,
+            '股利': 6,
+            '競技、競賽及機會中獎': 7,
+            '退職所得': 8,
+            '財產交易': 9,
+            '其他所得': 10,
+            '退休金員工自提數': 11
+        };
+
+        // 🔧 先按頁碼排序，再按憑單序號排序，最後按項目排序
+        var sortedRecords = records.slice().sort(function (a, b) {
+            var pageA = a.頁碼 || 1;
+            var pageB = b.頁碼 || 1;
+
+            // 先比較頁碼
+            if (pageA !== pageB) {
+                return pageA - pageB;
+            }
+
+            // 🆕 頁碼相同，比較憑單序號（股利憑單用）
+            var seqA = a.憑單序號 || 0;
+            var seqB = b.憑單序號 || 0;
+            if (seqA !== seqB) {
+                return seqA - seqB;
+            }
+
+            // 頁碼和憑單序號都相同，再比較項目
+            var itemA = a.itemName || '未分類';
+            var itemB = b.itemName || '未分類';
+            var orderA = itemOrder[itemA] || 999;
+            var orderB = itemOrder[itemB] || 999;
+            return orderA - orderB;
+        });
+
+        // 按項目分組（用於計算小計）
+        var groupedRecords = {};
+        sortedRecords.forEach(function (r, index) {
+            r._index = records.indexOf(r);  // 記錄在原始 currentTableData 中的索引
+            var itemName = r.itemName || '未分類';
+            if (!groupedRecords[itemName]) {
+                groupedRecords[itemName] = {
+                    records: [],
+                    subtotal: { totalAmount: 0, withholdingTax: 0 }
+                };
+            }
+            groupedRecords[itemName].records.push(r);
+            groupedRecords[itemName].subtotal.totalAmount += r.totalAmount;
+            groupedRecords[itemName].subtotal.withholdingTax += r.withholdingTax;
+        });
+
+        // 渲染排序後的記錄
+        var currentItem = null;
+        sortedRecords.forEach(function (r, idx) {
+            var itemName = r.itemName || '未分類';
+
+            // 渲染記錄
+            var fileName = '';
+            if (r.jobId && allJobs) {
+                var job = allJobs.find(function (j) { return j.id === r.jobId; });
+                if (job) {
+                    fileName = job.original_filename || '';
+                }
+            }
+
+            var deleteBtn = isActionVisible ?
+                '<td class="text-center action-column">' +
+                '<button class="btn btn-danger btn-xs delete-record-btn" data-index="' + r._index + '" title="刪除此記錄">' +
+                '<i class="fa fa-trash"></i>' +
+                '</button>' +
+                '</td>' : '';
+
+            html += '<tr data-job-id="' + (r.jobId || '') + '" data-index="' + r._index + '">' +
+                (isFileSourceVisible ? '<td class="file-source-column" style="font-size: 12px; color: #666;">' + fileName + '</td>' : '') +
+                (isPageNumberVisible ? '<td class="text-center page-number-column">' + formatPageNumber(r) + '</td>' : '') +
+                '<td>' + r.itemName + '</td>' +
+                '<td class="text-center">' + (r.index ? '<span class="badge badge-default">' + r.index + '</span>' : '-') + '</td>' +
+                '<td>' + r.payerName + '</td>' +
+                '<td>' + r.incomeType + '</td>' +
+                '<td class="text-right"><strong>' + formatNumber(r.totalAmount) + '</strong></td>' +
+                '<td class="text-right">' + formatNumber(r.withholdingTax) + '</td>' +
+                '<td class="text-center tax-rate-column">' + 
+                    calculateTaxRate(r.totalAmount, r.withholdingTax) + 
+                '</td>' +
+                deleteBtn +
+                '</tr>';
+
+            totals.totalAmount += r.totalAmount;
+            totals.withholdingTax += r.withholdingTax;
+
+            // 檢查是否是該項目的最後一筆記錄
+            var isLastOfItem = (idx === sortedRecords.length - 1) || (sortedRecords[idx + 1].itemName !== itemName);
+
+            if (isLastOfItem) {
+                // 新增記錄按鈕（只在編輯模式下顯示）
+                if (isActionVisible) {
+                    html += '<tr class="add-record-row" style="background: #f9f9f9;">' +
+                        '<td colspan="' + colspanCount + '" style="padding: 8px; text-align: left;">' +
+                        '<button class="btn btn-success btn-sm add-record-btn" data-item="' + itemName + '">' +
+                        '<i class="fa fa-plus"></i> 新增' + itemName + '記錄' +
+                        '</button>' +
+                        '</td>' +
+                        '</tr>';
+                }
+
+                // 🔧 暫時關閉：如果該項目有多筆記錄，新增項目小計
+                // if (groupedRecords[itemName].records.length > 1) {
+                //     var subtotalColspan = colspanCount - 2 - (isActionVisible ? 1 : 0);
+                //     html += '<tr class="subtotal-row" style="background: #e8f4f8; font-weight: bold; border-top: 2px solid #3498db;">' +
+                //         '<td colspan="' + subtotalColspan + '" class="text-right" style="background: #e8f4f8;">' + itemName + '總額</td>' +
+                //         '<td class="text-right" style="background: #e8f4f8;">' + formatNumber(groupedRecords[itemName].subtotal.totalAmount) + '</td>' +
+                //         '<td class="text-right" style="background: #e8f4f8;">' + formatNumber(groupedRecords[itemName].subtotal.withholdingTax) + '</td>' +
+                //         (isActionVisible ? '<td class="action-column" style="background: #fff; border-left: 1px solid #ddd;"></td>' : '') +
+                //         '</tr>';
+                // }
+            }
+        });
+
+        // 總計列
+        var totalLabel = withholdingView === 'expense' ? '本期給付合計' : '本期收入合計';
+        var totalColspan = colspanCount - 3 - (isActionVisible ? 1 : 0);
+        html += '<tr style="background: #d4edda; font-weight: bold; border-top: 3px solid #28a745;">' +
+            '<td colspan="' + totalColspan + '" class="text-right" style="font-size: 16px; background: #d4edda;">' + totalLabel + '</td>' +
+            '<td class="text-right" style="font-size: 16px; background: #d4edda;">' + formatNumber(totals.totalAmount) + '</td>' +
+            '<td class="text-right" style="font-size: 16px; background: #d4edda;">' + formatNumber(totals.withholdingTax) + '</td>' +
+            '<td class="tax-rate-column text-center" style="font-size: 16px; background: #d4edda;">' + 
+                calculateTaxRate(totals.totalAmount, totals.withholdingTax) + 
+            '</td>' +
+            (isActionVisible ? '<td class="action-column" style="background: #fff; border-left: 1px solid #ddd;"></td>' : '') +
+            '</tr>';
+
+        return html;
+    }
+
+    function makeTableEditable() {
+        if ($('#table-401').is(':visible')) {
+            // 401 表格編輯設定
+            // 銷項和進項表格：排除合計列和月份欄位
+            $('#sales-tbody tr:not(:last-child) td:not(:first-child), #purchase-tbody tr:not(:last-child) td:not(:first-child)')
+                .attr('contenteditable', 'true');
+
+            // 進項資料表格：排除「得扣抵」欄位（第2和第3欄，索引1和2）的編輯功能 - 🔧 修改：得扣抵現在是計算值
+            $('#purchase-tbody tr:not(:last-child)').each(function () {
+                $(this).find('td:eq(1), td:eq(2)').attr('contenteditable', 'false');
+            });
+
+            // 銷項資料表格：排除「銷售額合計」和「淨額」欄位（第9和第11欄，索引8和10）的編輯功能
+            $('#sales-tbody tr:not(:last-child)').each(function () {
+                $(this).find('td:eq(8), td:eq(10)').attr('contenteditable', 'false');
+            });
+
+        } else if ($('#table-403').is(':visible')) {
+            // 403 表格編輯設定
+            // 銷項和進項表格：排除合計列和月份欄位
+            $('#sales-tbody-403 tr:not(:last-child) td:not(:first-child), #purchase-tbody-403 tr:not(:last-child) td:not(:first-child)')
+                .attr('contenteditable', 'true');
+
+            // 進項資料表格：排除「得扣抵」欄位（第2和第3欄，索引1和2）的編輯功能 - 🔧 修改：得扣抵現在是計算值
+            $('#purchase-tbody-403 tr:not(:last-child)').each(function () {
+                $(this).find('td:eq(1), td:eq(2)').attr('contenteditable', 'false');
+            });
+
+            // 銷項資料表格：排除「銷售額合計」和「淨額」欄位（第10和第12欄，索引9和11）的編輯功能
+            $('#sales-tbody-403 tr:not(:last-child)').each(function () {
+                $(this).find('td:eq(9), td:eq(11)').attr('contenteditable', 'false');
+            });
+
+        } else if ($('#table-withholding').is(':visible')) {
+            // 扣繳憑單表格編輯設定
+            // 顯示操作欄位
+            $('.action-column').show();
+
+            // 重新渲染表格以顯示刪除和新增按鈕
+            renderWithholdingTable();
+
+            // 所有欄位都可編輯（除了特殊列和特殊欄位）
+            // 排除：小計列、新增按鈕列、操作欄位、檔案來源欄位、頁碼欄位、稅率欄位、項目欄位（下拉選單）
+            $('#withholding-tbody tr:not(.subtotal-row):not(.add-record-row) td:not(.action-column):not(.file-source-column):not(.page-number-column):not(.tax-rate-column):not(.item-name-cell)').attr('contenteditable', 'true');
+        }
+
+        $('.table tbody td[contenteditable="true"]').css({
+            'background': '#fff9e6',
+            'cursor': 'text',
+            'border': '1px solid #f39c12'
+        });
+
+        // 計算欄位保持原樣
+        $('.table tbody td[contenteditable="false"]:not(:first-child)').css({
+            'background': '#f0f0f0',
+            'cursor': 'not-allowed'
+        });
+
+        // 監聽編輯事件，當數值改變時重新計算合計
+        $('.table tbody td[contenteditable="true"]').on('blur keyup paste input', function () {
+            recalculateTotals();
+            recalculateRowTotals($(this).closest('tr'));
+        });
+    }
+
+    function makeTableReadonly() {
+        $('.table tbody td').attr('contenteditable', 'false');
+        $('.table tbody td').css({
+            'background': '',
+            'cursor': '',
+            'border': ''
+        });
+        // 移除事件監聽
+        $('.table tbody td').off('blur keyup paste input');
+
+        // 隱藏操作欄位
+        if ($('#table-withholding').is(':visible')) {
+            $('.action-column').hide();
+            renderWithholdingTable();
+        }
+    }
+
+    // 重新計算合計
+    function recalculateTotals() {
+        // 判斷當前顯示的是哪個表格
+        if ($('#table-401').is(':visible')) {
+            recalculateSalesTotals();
+            recalculatePurchaseTotals();
+        } else if ($('#table-403').is(':visible')) {
+            recalculate403SalesTotals();
+            recalculate403PurchaseTotals();
+        } else if ($('#table-withholding').is(':visible')) {
+            recalculateWithholdingTotals();
+        }
+    }
+
+    // 重新計算銷項合計
+    function recalculateSalesTotals() {
+        var $tbody = $('#sales-tbody');
+        var $rows = $tbody.find('tr:not(:last-child)'); // 排除合計列
+        var totals = {};
+
+        // 初始化合計
+        var columnCount = $rows.first().find('td').length;
+        for (var i = 1; i < columnCount; i++) {
+            totals[i] = 0;
+        }
+
+        // 計算每一欄的合計
+        $rows.each(function () {
+            $(this).find('td').each(function (index) {
+                if (index > 0) { // 跳過第一欄（月份）
+                    var value = parseNumber($(this).text());
+                    totals[index] = (totals[index] || 0) + value;
+                }
+            });
+        });
+
+        // 更新合計列
+        var $totalRow = $tbody.find('tr:last-child');
+        $totalRow.find('td').each(function (index) {
+            if (index > 0) {
+                $(this).text(formatNumber(totals[index]));
+            }
+        });
+    }
+
+    // 重新計算進項合計
+    function recalculatePurchaseTotals() {
+        var $tbody = $('#purchase-tbody');
+        var $rows = $tbody.find('tr:not(:last-child)'); // 排除合計列
+        var totals = {};
+
+        // 初始化合計
+        var columnCount = $rows.first().find('td').length;
+        for (var i = 1; i < columnCount; i++) {
+            totals[i] = 0;
+        }
+
+        // 計算每一欄的合計
+        $rows.each(function () {
+            $(this).find('td').each(function (index) {
+                if (index > 0) { // 跳過第一欄（月份）
+                    var value = parseNumber($(this).text());
+                    totals[index] = (totals[index] || 0) + value;
+                }
+            });
+        });
+
+        // 更新合計列（需要特別處理合計欄位）
+        var $totalRow = $tbody.find('tr:last-child');
+
+        // 🔧 修改：重新計算總計邏輯 - 得扣抵 = 合計 + 退回折讓
+        var purchaseReturn = totals[3] || 0;       // 退回折讓-進貨及費用總計
+        var purchaseReturnAssets = totals[4] || 0; // 退回折讓-固定資產總計
+        var totalExpense = totals[5] || 0;         // 合計-進貨及費用總計
+        var totalAsset = totals[6] || 0;           // 合計-固定資產總計
+
+        // 計算得扣抵欄位
+        var purchaseExpense = totalExpense + purchaseReturn;    // 得扣抵-進貨及費用
+        var fixedAssets = totalAsset + purchaseReturnAssets;    // 得扣抵-固定資產
+
+        // 更新顯示
+        $totalRow.find('td:eq(1)').text(formatNumber(purchaseExpense));   // 計算值
+        $totalRow.find('td:eq(2)').text(formatNumber(fixedAssets));       // 計算值
+        $totalRow.find('td:eq(3)').text(formatNumber(purchaseReturn));
+        $totalRow.find('td:eq(4)').text(formatNumber(purchaseReturnAssets));
+        $totalRow.find('td:eq(5)').text(formatNumber(totalExpense));
+        $totalRow.find('td:eq(6)').text(formatNumber(totalAsset));
+        $totalRow.find('td:eq(7)').text(formatNumber(totals[7] || 0));
+    }
+
+    // 重新計算403銷項合計
+    function recalculate403SalesTotals() {
+        var $tbody = $('#sales-tbody-403');
+        var $rows = $tbody.find('tr:not(:last-child)'); // 排除合計列
+        var totals = {};
+
+        // 初始化合計
+        var columnCount = $rows.first().find('td').length;
+        for (var i = 1; i < columnCount; i++) {
+            totals[i] = 0;
+        }
+
+        // 計算每一欄的合計
+        $rows.each(function () {
+            $(this).find('td').each(function (index) {
+                if (index > 0) { // 跳過第一欄（月份）
+                    var value = parseNumber($(this).text());
+                    totals[index] = (totals[index] || 0) + value;
+                }
+            });
+        });
+
+        // 更新合計列
+        var $totalRow = $tbody.find('tr:last-child');
+        $totalRow.find('td').each(function (index) {
+            if (index > 0) {
+                $(this).text(formatNumber(totals[index]));
+            }
+        });
+    }
+
+    // 重新計算403進項合計
+    function recalculate403PurchaseTotals() {
+        var $tbody = $('#purchase-tbody-403');
+        var $rows = $tbody.find('tr:not(:last-child)'); // 排除合計列
+        var totals = {};
+
+        // 初始化合計
+        var columnCount = $rows.first().find('td').length;
+        for (var i = 1; i < columnCount; i++) {
+            totals[i] = 0;
+        }
+
+        // 計算每一欄的合計
+        $rows.each(function () {
+            $(this).find('td').each(function (index) {
+                if (index > 0) { // 跳過第一欄（月份）
+                    var value = parseNumber($(this).text());
+                    totals[index] = (totals[index] || 0) + value;
+                }
+            });
+        });
+
+        // 更新合計列（需要特別處理合計欄位）
+        var $totalRow = $tbody.find('tr:last-child');
+
+        // 🔧 修改：重新計算總計邏輯 - 得扣抵 = 合計 + 退回折讓
+        var purchaseReturn = totals[3] || 0;       // 退回折讓-進貨及費用總計
+        var purchaseReturnAssets = totals[4] || 0; // 退回折讓-固定資產總計
+        var totalExpense = totals[5] || 0;         // 合計-進貨及費用總計
+        var totalAsset = totals[6] || 0;           // 合計-固定資產總計
+
+        // 計算得扣抵欄位
+        var purchaseExpense = totalExpense + purchaseReturn;    // 得扣抵-進貨及費用
+        var fixedAssets = totalAsset + purchaseReturnAssets;    // 得扣抵-固定資產
+
+        // 更新顯示
+        $totalRow.find('td:eq(1)').text(formatNumber(purchaseExpense));   // 計算值
+        $totalRow.find('td:eq(2)').text(formatNumber(fixedAssets));       // 計算值
+        $totalRow.find('td:eq(3)').text(formatNumber(purchaseReturn));
+        $totalRow.find('td:eq(4)').text(formatNumber(purchaseReturnAssets));
+        $totalRow.find('td:eq(5)').text(formatNumber(totalExpense));
+        $totalRow.find('td:eq(6)').text(formatNumber(totalAsset));
+        $totalRow.find('td:eq(7)').text(formatNumber(totals[7] || 0));
+    }
+
+    // 重新計算扣繳憑單合計
+    function recalculateWithholdingTotals() {
+        var $tbody = $('#withholding-tbody');
+        var isFileSourceVisible = $('.file-source-column').is(':visible');
+        var isActionVisible = $('.action-column').is(':visible');
+
+        // 計算欄位偏移
+        var offset = 0;
+        if (isFileSourceVisible) offset++;
+
+        // 只計算資料列（排除合計列、總額列、新增按鈕列）
+        var $dataRows = $tbody.find('tr:not(:last-child):not(.subtotal-row):not(.add-record-row)');
+
+        // 按項目分組計算
+        var itemTotals = {};
+        var grandTotal = { totalAmount: 0, withholdingTax: 0 };
+
+        $dataRows.each(function () {
+            var $cells = $(this).find('td');
+            var itemName = $cells.eq(offset + 0).text().trim();
+            var totalAmount = parseNumber($cells.eq(offset + 4).text());
+            var withholdingTax = parseNumber($cells.eq(offset + 5).text());
+
+            if (!itemTotals[itemName]) {
+                itemTotals[itemName] = { totalAmount: 0, withholdingTax: 0 };
+            }
+
+            itemTotals[itemName].totalAmount += totalAmount;
+            itemTotals[itemName].withholdingTax += withholdingTax;
+
+            grandTotal.totalAmount += totalAmount;
+            grandTotal.withholdingTax += withholdingTax;
+        });
+
+        // 更新各項目的總額列
+        $tbody.find('tr.subtotal-row').each(function () {
+            var $row = $(this);
+            var $cells = $row.find('td');
+            var text = $cells.eq(0).text().trim();
+
+            // 從「薪資總額」中提取「薪資」
+            var itemName = text.replace('總額', '');
+
+            if (itemTotals[itemName]) {
+                var colspanCount = isFileSourceVisible ? 1 : 0;
+                if (isActionVisible) colspanCount++;
+
+                var totalAmountIndex = $cells.length - 2 - (isActionVisible ? 1 : 0);
+                var withholdingTaxIndex = $cells.length - 1 - (isActionVisible ? 1 : 0);
+
+                $cells.eq(totalAmountIndex).text(formatNumber(itemTotals[itemName].totalAmount));
+                $cells.eq(withholdingTaxIndex).text(formatNumber(itemTotals[itemName].withholdingTax));
+            }
+        });
+
+        // 更新合計列
+        var $totalRow = $tbody.find('tr:last-child');
+        var $totalCells = $totalRow.find('td');
+        var totalAmountIndex = $totalCells.length - 2 - (isActionVisible ? 1 : 0);
+        var withholdingTaxIndex = $totalCells.length - 1 - (isActionVisible ? 1 : 0);
+
+        $totalCells.eq(totalAmountIndex).text(formatNumber(grandTotal.totalAmount));
+        $totalCells.eq(withholdingTaxIndex).text(formatNumber(grandTotal.withholdingTax));
+    }
+
+    // 解析數字（移除千分位逗號）
+    function parseNumber(str) {
+        if (!str) return 0;
+        var cleaned = str.toString().replace(/,/g, '').replace(/[^\d.-]/g, '');
+        var num = parseFloat(cleaned);
+        return isNaN(num) ? 0 : num;
+    }
+
+    // 格式化數字（添加千分位逗號）
+    function formatNumber(num) {
+        if (num === null || num === undefined || isNaN(num)) return '0';
+        return parseInt(num).toLocaleString('en-US');
+    }
+
+    // 🆕 格式化頁碼顯示（股利憑單顯示為 "頁碼-序號"）
+    function formatPageNumber(record) {
+        var pageNum = record.頁碼 || '-';
+        var voucherSeq = record.憑單序號;
+        
+        // 如果有憑單序號，顯示為 "頁碼-序號" 格式
+        if (voucherSeq !== undefined && voucherSeq !== null) {
+            return pageNum + '-' + voucherSeq;
+        }
+        
+        // 否則只顯示頁碼
+        return pageNum;
+    }
+
+    // 重新計算單行的合計欄位
+    function recalculateRowTotals($row) {
+        // 判斷是哪個表格的行
+        if ($row.closest('#sales-tbody').length > 0) {
+            // 401 銷項資料：新欄位結構（14欄）
+            // 索引：0月份 1三聯式 2二聯式 3經海關 4非經海關 5免稅 6特種稅額 7其他
+            //       8銷售額合計 9退回一般 10退回零稅率 11退回特種 12退回合計 13淨額
+            var $cells = $row.find('td');
+
+            // 銷售額合計 = 三聯式 + 二聯式 + 經海關 + 非經海關 + 免稅 + 特種稅額 + 其他
+            var totalSales =
+                parseNumber($cells.eq(1).text()) +  // 三聯式
+                parseNumber($cells.eq(2).text()) +  // 二聯式
+                parseNumber($cells.eq(3).text()) +  // 經海關
+                parseNumber($cells.eq(4).text()) +  // 非經海關
+                parseNumber($cells.eq(5).text()) +  // 免稅
+                parseNumber($cells.eq(6).text()) +  // 特種稅額
+                parseNumber($cells.eq(7).text());   // 其他
+
+            // 銷貨退回及折讓合計 = 一般 + 零稅率 + 特種
+            var returnGeneral = parseNumber($cells.eq(9).text());
+            var returnZeroRate = parseNumber($cells.eq(10).text());
+            var returnSpecial = parseNumber($cells.eq(11).text());
+            var returnTotal = returnGeneral + returnZeroRate + returnSpecial;
+
+            // 淨額 = 銷售額合計 - 銷貨退回及折讓合計
+            var netAmount = totalSales - returnTotal;
+
+            // 保留 <strong> 標籤
+            $cells.eq(8).html('<strong>' + formatNumber(totalSales) + '</strong>');
+            $cells.eq(12).html('<strong>' + formatNumber(returnTotal) + '</strong>');
+            $cells.eq(13).html('<strong>' + formatNumber(netAmount) + '</strong>');
+
+        } else if ($row.closest('#sales-tbody-403').length > 0) {
+            // 403 銷項資料：新欄位結構（14欄）
+            // 索引：0月份 1三聯式 2二聯式 3經海關 4非經海關 5免稅 6特種稅額 7其他
+            //       8銷售額合計 9退回一般 10退回零稅率 11退回特種 12退回合計 13淨額
+            var $cells = $row.find('td');
+
+            // 銷售額合計 = 三聯式 + 二聯式 + 經海關 + 非經海關 + 免稅 + 特種稅額 + 其他
+            var totalSales =
+                parseNumber($cells.eq(1).text()) +  // 三聯式
+                parseNumber($cells.eq(2).text()) +  // 二聯式
+                parseNumber($cells.eq(3).text()) +  // 經海關
+                parseNumber($cells.eq(4).text()) +  // 非經海關
+                parseNumber($cells.eq(5).text()) +  // 免稅
+                parseNumber($cells.eq(6).text()) +  // 特種稅額銷售額
+                parseNumber($cells.eq(7).text());   // 其他
+
+            // 銷貨退回及折讓合計 = 一般 + 零稅率 + 特種
+            var returnGeneral = parseNumber($cells.eq(9).text());
+            var returnZeroRate = parseNumber($cells.eq(10).text());
+            var returnSpecial = parseNumber($cells.eq(11).text());
+            var returnTotal = returnGeneral + returnZeroRate + returnSpecial;
+
+            // 淨額 = 銷售額合計 - 銷貨退回及折讓合計
+            var netAmount = totalSales - returnTotal;
+
+            // 保留 <strong> 標籤
+            $cells.eq(8).html('<strong>' + formatNumber(totalSales) + '</strong>');
+            $cells.eq(12).html('<strong>' + formatNumber(returnTotal) + '</strong>');
+            $cells.eq(13).html('<strong>' + formatNumber(netAmount) + '</strong>');
+
+        } else if ($row.closest('#purchase-tbody').length > 0) {
+            // 401 進項資料：計算得扣抵欄位（第2和第3欄）- 🔧 修改：得扣抵 = 合計 + 退回折讓
+            var $cells = $row.find('td');
+
+            // 得扣抵進貨及費用 = 合計進貨及費用 + 退回折讓進貨及費用
+            var deductibleExpense = parseNumber($cells.eq(5).text()) + parseNumber($cells.eq(3).text());
+
+            // 得扣抵固定資產 = 合計固定資產 + 退回折讓固定資產
+            var deductibleAsset = parseNumber($cells.eq(6).text()) + parseNumber($cells.eq(4).text());
+
+            // 保留 <strong> 標籤
+            $cells.eq(1).html('<strong>' + formatNumber(deductibleExpense) + '</strong>');
+            $cells.eq(2).html('<strong>' + formatNumber(deductibleAsset) + '</strong>');
+
+        } else if ($row.closest('#purchase-tbody-403').length > 0) {
+            // 403 進項資料：計算得扣抵欄位（第2和第3欄）- 🔧 修改：得扣抵 = 合計 + 退回折讓
+            var $cells = $row.find('td');
+
+            // 得扣抵進貨及費用 = 合計進貨及費用 + 退回折讓進貨及費用
+            var deductibleExpense = parseNumber($cells.eq(5).text()) + parseNumber($cells.eq(3).text());
+
+            // 得扣抵固定資產 = 合計固定資產 + 退回折讓固定資產
+            var deductibleAsset = parseNumber($cells.eq(6).text()) + parseNumber($cells.eq(4).text());
+
+            // 保留 <strong> 標籤
+            $cells.eq(1).html('<strong>' + formatNumber(deductibleExpense) + '</strong>');
+            $cells.eq(2).html('<strong>' + formatNumber(deductibleAsset) + '</strong>');
+        }
+    }
+
+    // 同步表格資料回 currentTableData（在建立版本前呼叫）
+    function syncTableDataToCurrentData() {
+        if ($('#table-401').is(':visible')) {
+            // 401 表格：從銷項和進項表格讀取資料
+            sync401TableData();
+        } else if ($('#table-403').is(':visible')) {
+            // 403 表格：從銷項和進項表格讀取資料
+            sync403TableData();
+        } else if ($('#table-withholding').is(':visible')) {
+            // 扣繳憑單表格：從扣繳憑單表格讀取資料
+            syncWithholdingTableData();
+        }
+    }
+
+    function sync401TableData() {
+        var newData = [];
+        var $salesRows = $('#sales-tbody tr:not(:last-child)'); // 排除合計列
+        var $purchaseRows = $('#purchase-tbody tr:not(:last-child)');
+
+        $salesRows.each(function (index) {
+            var $salesCells = $(this).find('td');
+            var $purchaseCells = $purchaseRows.eq(index).find('td');
+
+            var record = {
+                month: $salesCells.eq(0).text().trim(),
+                monthSort: currentTableData[index] ? currentTableData[index].monthSort : index,
+                頁碼: currentTableData[index] ? currentTableData[index].頁碼 : 1,      // 保留頁碼
+                總頁數: currentTableData[index] ? currentTableData[index].總頁數 : 1,  // 保留總頁數
+                // 銷項 - 14欄結構（非經海關在前，經海關在後）
+                triplicateSales: parseNumber($salesCells.eq(1).text()),
+                duplicateSales: parseNumber($salesCells.eq(2).text()),
+                nonCustomsSales: parseNumber($salesCells.eq(3).text()),     // 非經海關
+                customsSales: parseNumber($salesCells.eq(4).text()),        // 經海關
+                taxFreeSales: parseNumber($salesCells.eq(5).text()),
+                specialTaxSales: parseNumber($salesCells.eq(6).text()),
+                otherSales: parseNumber($salesCells.eq(7).text()),
+                totalSales: parseNumber($salesCells.eq(8).text()),
+                // 銷貨退回及折讓 (3子欄 + 合計)
+                returnGeneral: parseNumber($salesCells.eq(9).text()),       // 一般
+                returnZeroRate: parseNumber($salesCells.eq(10).text()),     // 零稅率
+                returnSpecial: parseNumber($salesCells.eq(11).text()),      // 特種 (401固定為0)
+                returnTotal: parseNumber($salesCells.eq(12).text()),        // 銷貨退回及折讓合計
+                netAmount: parseNumber($salesCells.eq(13).text()),
+                // 進項
+                purchaseAndExpense: parseNumber($purchaseCells.eq(1).text()),
+                fixedAssets: parseNumber($purchaseCells.eq(2).text()),
+                purchaseReturn: parseNumber($purchaseCells.eq(3).text()),
+                purchaseReturnAssets: parseNumber($purchaseCells.eq(4).text()),
+                purchaseTotal: parseNumber($purchaseCells.eq(5).text()),        // 合計-進貨及費用
+                assetsTotal: parseNumber($purchaseCells.eq(6).text()),          // 合計-固定資產
+                importAmount: parseNumber($purchaseCells.eq(7).text())
+            };
+
+            newData.push(record);
+        });
+
+        currentTableData = newData;
+        console.log('已同步 401 表格資料回 currentTableData:', currentTableData);
+    }
+
+    function sync403TableData() {
+        var newData = [];
+        var $salesRows = $('#sales-tbody-403 tr:not(:last-child)'); // 排除合計列
+        var $purchaseRows = $('#purchase-tbody-403 tr:not(:last-child)');
+
+        $salesRows.each(function (index) {
+            var $salesCells = $(this).find('td');
+            var $purchaseCells = $purchaseRows.eq(index).find('td');
+
+            var record = {
+                month: $salesCells.eq(0).text().trim(),
+                monthSort: currentTableData[index] ? currentTableData[index].monthSort : index,
+                頁碼: currentTableData[index] ? currentTableData[index].頁碼 : 1,      // 保留頁碼
+                總頁數: currentTableData[index] ? currentTableData[index].總頁數 : 1,  // 保留總頁數
+                // 銷項 - 14欄結構（非經海關在前，經海關在後）
+                triplicateSales: parseNumber($salesCells.eq(1).text()),
+                duplicateSales: parseNumber($salesCells.eq(2).text()),
+                nonCustomsSales: parseNumber($salesCells.eq(3).text()),     // 非經海關
+                customsSales: parseNumber($salesCells.eq(4).text()),        // 經海關
+                taxFreeSales: parseNumber($salesCells.eq(5).text()),
+                specialTaxSales: parseNumber($salesCells.eq(6).text()),
+                otherSales: parseNumber($salesCells.eq(7).text()),
+                totalSales: parseNumber($salesCells.eq(8).text()),
+                // 銷貨退回及折讓 (3子欄 + 合計)
+                returnGeneral: parseNumber($salesCells.eq(9).text()),       // 一般
+                returnZeroRate: parseNumber($salesCells.eq(10).text()),     // 零稅率
+                returnSpecial: parseNumber($salesCells.eq(11).text()),      // 特種
+                returnTotal: parseNumber($salesCells.eq(12).text()),        // 銷貨退回及折讓合計
+                netAmount: parseNumber($salesCells.eq(13).text()),
+                // 進項
+                purchaseAndExpense: parseNumber($purchaseCells.eq(1).text()),
+                fixedAssets: parseNumber($purchaseCells.eq(2).text()),
+                purchaseReturn: parseNumber($purchaseCells.eq(3).text()),
+                purchaseReturnAssets: parseNumber($purchaseCells.eq(4).text()),
+                purchaseTotal: parseNumber($purchaseCells.eq(5).text()),        // 合計-進貨及費用
+                assetsTotal: parseNumber($purchaseCells.eq(6).text()),          // 合計-固定資產
+                importAmount: parseNumber($purchaseCells.eq(7).text())
+            };
+
+            newData.push(record);
+        });
+
+        currentTableData = newData;
+        console.log('已同步 403 表格資料回 currentTableData:', currentTableData);
+    }
+
+    function syncWithholdingTableData() {
+        var newData = [];
+        // 排除合計列、總額列、新增按鈕列
+        var $rows = $('#withholding-tbody tr:not(:last-child):not(.subtotal-row):not(.add-record-row)');
+
+        console.log('=== 同步扣繳憑單表格資料 ===');
+        console.log('表格行數（不含合計/總額/新增按鈕）:', $rows.length);
+        console.log('原始 currentTableData 長度:', currentTableData.length);
+
+        $rows.each(function (index) {
+            var $row = $(this);
+            var $cells = $row.find('td');
+            var jobId = parseInt($row.attr('data-job-id')) || null;
+            var dataIndex = parseInt($row.attr('data-index')) || index;
+
+            // 檢查是否有檔案來源欄位和頁碼欄位
+            var hasFileSource = $('.file-source-column').is(':visible');
+            var hasPageNumber = $('.page-number-column').is(':visible');
+            var offset = 0;
+            if (hasFileSource) offset++;
+            if (hasPageNumber) offset++;
+
+            // 🔧 修復：從原始資料中正確獲取頁碼資訊
+            var originalRecord = currentTableData[dataIndex] || currentTableData.find(function(r, i) {
+                return r.jobId === jobId && i === index;
+            });
+
+            // 🆕 讀取項目：如果是下拉選單則從 select 讀取，否則從文字讀取
+            var $itemCell = $cells.eq(offset + 0);
+            var itemName = '';
+            if ($itemCell.find('select.item-name-select').length > 0) {
+                // 編輯模式：從下拉選單讀取
+                itemName = $itemCell.find('select.item-name-select').val();
+            } else {
+                // 檢視模式：從文字讀取
+                itemName = $itemCell.text().trim();
+            }
+
+            var record = {
+                jobId: jobId,  // 保留 jobId
+                fileName: originalRecord ? originalRecord.fileName : '',  // 🆕 保留檔案名稱
+                頁碼: originalRecord ? originalRecord.頁碼 : 1,      // 🔧 修復：正確保留頁碼
+                總頁數: originalRecord ? originalRecord.總頁數 : 1,  // 🔧 修復：正確保留總頁數
+                憑單序號: originalRecord ? originalRecord.憑單序號 : null,  // 🆕 保留憑單序號（股利憑單用）
+                itemName: itemName,
+                index: $cells.eq(offset + 1).find('.badge').text().trim() || '',
+                payerName: $cells.eq(offset + 2).text().trim(),
+                incomeType: $cells.eq(offset + 3).text().trim(),
+                totalAmount: parseNumber($cells.eq(offset + 4).text()),
+                withholdingTax: parseNumber($cells.eq(offset + 5).text())
+            };
+
+            if (index < 3) {  // 只顯示前 3 筆
+                console.log('行 ' + index + ':', {
+                    jobId: record.jobId,
+                    頁碼: record.頁碼,
+                    憑單序號: record.憑單序號,
+                    itemName: record.itemName,
+                    payerName: record.payerName,
+                    totalAmount: record.totalAmount,
+                    originalRecord: originalRecord ? '找到' : '未找到'
+                });
+            }
+
+            newData.push(record);
+        });
+
+        currentTableData = newData;
+        console.log('同步完成，總筆數:', currentTableData.length);
+        console.log('按 jobId 統計:', currentTableData.reduce(function (acc, r) {
+            acc[r.jobId] = (acc[r.jobId] || 0) + 1;
+            return acc;
+        }, {}));
+        console.log('按頁碼統計:', currentTableData.reduce(function (acc, r) {
+            acc[r.頁碼] = (acc[r.頁碼] || 0) + 1;
+            return acc;
+        }, {}));
+        console.log('===========================');
+    }
+
+    // ============ 新增/刪除記錄功能 ============
+
+    // 項目與所得類別的對應關係
+    var itemToIncomeTypeMap = {
+        '薪資': '薪資',
+        '執行業務報酬': '執行業務一般',
+        '利息': '利息',
+        '租賃': '租賃',
+        '權利金': '權利金',
+        '股利': '營利所得87年度或以後年度股利或盈餘',
+        '競技、競賽及機會中獎': '競技、競賽及機會中獎',
+        '退職所得': '退職所得',
+        '財產交易': '財產交易所得',
+        '其他所得': '前4項以外之其他所得',
+        '退休金員工自提數': '退休金員工自提數'
+    };
+
+    function deleteRecord(index) {
+        if (!confirm('確定要刪除此記錄嗎？')) {
+            return;
+        }
+
+        // 從 currentTableData 中移除
+        currentTableData.splice(index, 1);
+
+        // 重新渲染表格
+        renderWithholdingTable();
+
+        // 重新啟用編輯模式
+        makeTableEditable();
+
+        showNotification('已刪除記錄', 'success');
+    }
+
+    function showAddRecordDialog(itemName) {
+        // 🆕 使用新的 Modal 對話框
+        $('#new-record-item-name').val(itemName);
+        populateFileNameOptions();
+        $('#addRecordModal').modal('show');
+    }
+
+    // 🆕 填充檔案下拉選單
+    function populateFileNameOptions() {
+        var $select = $('#new-record-file-name');
+        $select.empty().append('<option value="">請選擇檔案</option>');
+        
+        // 從 allJobs 中取得檔案資訊
+        var fileMap = {};
+        allJobs.forEach(function(job) {
+            if (job.original_filename && !fileMap[job.id]) {
+                var totalPages = 1;
+                if (job.result_json) {
+                    if (job.result_json.頁面資料 && Array.isArray(job.result_json.頁面資料)) {
+                        totalPages = job.result_json.頁面資料.length;
+                    } else if (job.result_json.總頁數) {
+                        totalPages = job.result_json.總頁數;
+                    }
+                }
+                fileMap[job.id] = {
+                    fileName: job.original_filename,
+                    totalPages: totalPages
+                };
+            }
+        });
+        
+        Object.keys(fileMap).forEach(function(jobId) {
+            var info = fileMap[jobId];
+            $select.append(
+                $('<option></option>')
+                    .val(jobId)
+                    .text(info.fileName)
+                    .data('total-pages', info.totalPages)
+            );
+        });
+    }
+
+    // 🆕 新增記錄（含檔案和頁碼資訊）
+    function addNewRecordWithFileInfo(itemName, jobId, pageNumber) {
+        var selectedJob = allJobs.find(function(j) { return j.id == jobId; });
+        if (!selectedJob) {
+            showNotification('找不到選擇的檔案', 'danger');
+            return;
+        }
+        
+        // 取得 payerName（扣繳單位名稱）
+        var payerName = '';
+        var totalPages = 1;
+        
+        if (selectedJob.result_json) {
+            if (selectedJob.result_json.頁面資料 && Array.isArray(selectedJob.result_json.頁面資料)) {
+                // 多頁格式：從指定頁面取得
+                totalPages = selectedJob.result_json.頁面資料.length;
+                var pageData = selectedJob.result_json.頁面資料.find(function(p) { 
+                    return p.頁碼 === pageNumber; 
+                });
+                if (!pageData && pageNumber <= totalPages) {
+                    // 如果找不到精確匹配，使用索引
+                    pageData = selectedJob.result_json.頁面資料[pageNumber - 1];
+                }
+                payerName = pageData ? (pageData.扣繳單位名稱 || '') : '';
+            } else {
+                // 單頁格式：直接取得
+                payerName = selectedJob.result_json.扣繳單位名稱 || '';
+                totalPages = selectedJob.result_json.總頁數 || 1;
+            }
+        }
+        
+        // 建立新記錄
+        var newRecord = {
+            jobId: selectedJob.id,
+            fileName: selectedJob.original_filename,
+            頁碼: pageNumber,
+            總頁數: totalPages,
+            itemName: itemName,
+            index: '',
+            payerName: payerName,
+            incomeType: '',
+            totalAmount: 0,
+            withholdingTax: 0
+        };
+        
+        // 找到插入位置（按項目排序）
+        var insertIndex = findInsertPosition(itemName);
+        currentTableData.splice(insertIndex, 0, newRecord);
+        
+        // 重新渲染表格
+        renderWithholdingTable();
+        
+        // 重新啟用編輯模式
+        makeTableEditable();
+        
+        showNotification('已新增記錄，請填寫詳細資訊', 'success');
+    }
+
+    // 🆕 找到插入位置（按項目排序）
+    function findInsertPosition(itemName) {
+        var itemOrder = {
+            '薪資': 1, '執行業務報酬': 2, '利息': 3, '租賃': 4, '權利金': 5,
+            '股利': 6, '競技、競賽及機會中獎': 7, '退職所得': 8, '財產交易': 9,
+            '其他所得': 10, '退休金員工自提數': 11
+        };
+        
+        var targetOrder = itemOrder[itemName] || 999;
+        
+        for (var i = 0; i < currentTableData.length; i++) {
+            var currentOrder = itemOrder[currentTableData[i].itemName] || 999;
+            if (currentOrder > targetOrder) {
+                return i;
+            }
+        }
+        
+        return currentTableData.length;
+    }
+
+    function addRecord(itemName) {
+        var defaultIncomeType = itemToIncomeTypeMap[itemName] || '';
+
+        // 判斷是「全部檔案」還是「個別檔案」模式
+        var isAllMode = viewMode === 'all';
+
+        // 構建對話框 HTML
+        var dialogHtml = '<div class="modal fade" id="addRecordModal" tabindex="-1" role="dialog">' +
+            '<div class="modal-dialog" role="document">' +
+            '<div class="modal-content">' +
+            '<div class="modal-header">' +
+            '<button type="button" class="close" data-dismiss="modal">&times;</button>' +
+            '<h4 class="modal-title">新增' + itemName + '記錄</h4>' +
+            '</div>' +
+            '<div class="modal-body">' +
+            '<form id="addRecordForm">';
+
+        // 如果是「全部檔案」模式，新增檔案選擇下拉選單
+        if (isAllMode && allJobs.length > 1) {
+            dialogHtml += '<div class="form-group">' +
+                '<label>選擇檔案 <span class="text-danger">*</span></label>' +
+                '<select class="form-control" id="add-record-job-id" required>';
+
+            allJobs.forEach(function (job) {
+                var fileName = job.original_filename || '未命名檔案';
+                dialogHtml += '<option value="' + job.id + '">' + fileName + '</option>';
+            });
+
+            dialogHtml += '</select>' +
+                '</div>';
+        }
+
+        dialogHtml += '<div class="form-group">' +
+            '<label>扣繳單位名稱</label>' +
+            '<input type="text" class="form-control" id="add-record-payer-name" placeholder="請輸入扣繳單位名稱">' +
+            '</div>' +
+            '<div class="form-group">' +
+            '<label>所得類別及代號</label>' +
+            '<input type="text" class="form-control" id="add-record-income-type" value="' + defaultIncomeType + '" placeholder="請輸入所得類別">' +
+            '</div>' +
+            '<div class="form-group">' +
+            '<label>各類給付總額</label>' +
+            '<input type="number" class="form-control" id="add-record-total-amount" value="0" min="0" step="1">' +
+            '</div>' +
+            '<div class="form-group">' +
+            '<label>扣繳稅額</label>' +
+            '<input type="number" class="form-control" id="add-record-withholding-tax" value="0" min="0" step="1">' +
+            '</div>' +
+            '</form>' +
+            '</div>' +
+            '<div class="modal-footer">' +
+            '<button type="button" class="btn btn-default" data-dismiss="modal">取消</button>' +
+            '<button type="button" class="btn btn-primary" id="confirm-add-record-btn">確定</button>' +
+            '</div>' +
+            '</div>' +
+            '</div>' +
+            '</div>';
+
+        // 移除舊的對話框（如果存在）
+        $('#addRecordModal').remove();
+
+        // 新增對話框到頁面
+        $('body').append(dialogHtml);
+
+        // 顯示對話框
+        $('#addRecordModal').modal('show');
+
+        // 自動填入扣繳單位名稱
+        $('#addRecordModal').on('shown.bs.modal', function () {
+            var jobId = isAllMode && allJobs.length > 1 ?
+                parseInt($('#add-record-job-id').val()) :
+                (selectedJobId || allJobs[0].id);
+
+            var job = allJobs.find(function (j) { return j.id === jobId; });
+            if (job && job.result_json) {
+                var payerName = '';
+                if (job.result_json.頁面資料 && job.result_json.頁面資料.length > 0) {
+                    payerName = job.result_json.頁面資料[0].扣繳單位名稱 || '';
+                } else {
+                    payerName = job.result_json.扣繳單位名稱 || '';
+                }
+                $('#add-record-payer-name').val(payerName);
+            }
+        });
+
+        // 當選擇檔案改變時，更新扣繳單位名稱
+        $('#add-record-job-id').change(function () {
+            var jobId = parseInt($(this).val());
+            var job = allJobs.find(function (j) { return j.id === jobId; });
+            if (job && job.result_json) {
+                var payerName = '';
+                if (job.result_json.頁面資料 && job.result_json.頁面資料.length > 0) {
+                    payerName = job.result_json.頁面資料[0].扣繳單位名稱 || '';
+                } else {
+                    payerName = job.result_json.扣繳單位名稱 || '';
+                }
+                $('#add-record-payer-name').val(payerName);
+            }
+        });
+
+        // 確定按鈕事件
+        $('#confirm-add-record-btn').click(function () {
+            addRecord(itemName);
+        });
+    }
+
+    function addRecord(itemName) {
+        // 取得表單資料
+        var jobId = viewMode === 'all' && allJobs.length > 1 ?
+            parseInt($('#add-record-job-id').val()) :
+            (selectedJobId || allJobs[0].id);
+
+        var payerName = $('#add-record-payer-name').val().trim();
+        var incomeType = $('#add-record-income-type').val().trim();
+        var totalAmount = parseInt($('#add-record-total-amount').val()) || 0;
+        var withholdingTax = parseInt($('#add-record-withholding-tax').val()) || 0;
+
+        // 驗證
+        if (!payerName) {
+            showNotification('請輸入扣繳單位名稱', 'warning');
+            return;
+        }
+        if (!incomeType) {
+            showNotification('請輸入所得類別', 'warning');
+            return;
+        }
+
+        // 新增記錄到 currentTableData
+        var newRecord = {
+            jobId: jobId,
+            itemName: itemName,
+            payerName: payerName,
+            incomeType: incomeType,
+            totalAmount: totalAmount,
+            withholdingTax: withholdingTax,
+            index: null,
+            isNew: true  // 標記為新增的記錄
+        };
+
+        currentTableData.push(newRecord);
+
+        // 關閉對話框
+        $('#addRecordModal').modal('hide');
+
+        // 重新渲染表格（會自動按項目排序）
+        renderWithholdingTable();
+
+        // 重新啟用編輯模式
+        makeTableEditable();
+
+        showNotification('已新增記錄', 'success');
+    }
+
+    // ============ 🆕 錯誤處理函數 ============
+
+    function showJobErrors() {
+        /**
+         * 檢查並顯示失敗的Job錯誤訊息
+         */
+        var failedJobs = allJobs.filter(function(job) {
+            return job.status === 'FAILED';
+        });
+
+        if (failedJobs.length === 0) {
+            $('#error-container').hide();
+            return;
+        }
+
+        var errorHtml = '';
+        failedJobs.forEach(function(job) {
+            var errorInfo = parseErrorMessage(job.error_message);
+            var errorDataId = 'error-data-' + job.id;
+            
+            errorHtml += 
+                '<div class="alert alert-danger" style="margin-bottom: 15px;">' +
+                '<h4><i class="fa fa-exclamation-triangle"></i> 處理失敗</h4>' +
+                '<div class="row">' +
+                '<div class="col-md-8">' +
+                '<p><strong>檔案：</strong><span id="' + errorDataId + '-file">' + escapeHtml(errorInfo.file_name) + '</span></p>' +
+                '<p><strong>錯誤類型：</strong><span id="' + errorDataId + '-type">' + escapeHtml(errorInfo.error_type) + '</span></p>' +
+                '<p><strong>錯誤訊息：</strong><span id="' + errorDataId + '-msg">' + escapeHtml(errorInfo.error_message) + '</span></p>' +
+                '</div>' +
+                '<div class="col-md-4 text-right">' +
+                '<button class="btn btn-sm btn-info" onclick="copyErrorMessageById(' + job.id + ')">' +
+                '<i class="fa fa-copy"></i> 複製錯誤訊息' +
+                '</button>' +
+                '</div>' +
+                '</div>' +
+                // 隱藏的 data 容器
+                '<div id="' + errorDataId + '" style="display: none;" ' +
+                'data-job-id="' + job.id + '" ' +
+                'data-file-name="' + escapeHtml(errorInfo.file_name) + '" ' +
+                'data-error-type="' + escapeHtml(errorInfo.error_type) + '" ' +
+                'data-error-message="' + escapeHtml(errorInfo.error_message) + '">' +
+                '</div>' +
+                '</div>';
+        });
+
+        $('#error-container').html(errorHtml).show();
+    }
+
+    function escapeHtml(text) {
+        /**
+         * 轉義HTML特殊字元，防止XSS攻擊
+         */
+        if (!text) return '';
+        var map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
+
+    function parseErrorMessage(errorMessage) {
+        /**
+         * 解析錯誤訊息，支援新舊格式
+         */
+        try {
+            // 嘗試解析新格式（JSON）
+            var errorInfo = JSON.parse(errorMessage);
+            return {
+                file_name: errorInfo.file_name || 'Unknown',
+                error_type: errorInfo.error_type || 'Unknown',
+                error_message: errorInfo.error_message || errorMessage
+            };
+        } catch (e) {
+            // 舊格式（純文字）
+            return {
+                file_name: 'Unknown',
+                error_type: 'ProcessingError',
+                error_message: errorMessage || '未知錯誤'
+            };
+        }
+    }
+
+    function copyErrorMessageById(jobId) {
+        /**
+         * 從data屬性讀取錯誤訊息並複製到剪貼簿
+         */
+        console.log('🔍 開始複製錯誤訊息，Job ID:', jobId);
+        
+        var errorDataId = 'error-data-' + jobId;
+        var errorDataEl = document.getElementById(errorDataId);
+        
+        if (!errorDataEl) {
+            console.error('❌ 找不到錯誤資料元素:', errorDataId);
+            showNotification('無法找到錯誤資料', 'warning');
+            return;
+        }
+        
+        console.log('✅ 找到錯誤資料元素');
+        
+        var fileName = errorDataEl.getAttribute('data-file-name');
+        var errorType = errorDataEl.getAttribute('data-error-type');
+        var errorMessage = errorDataEl.getAttribute('data-error-message');
+        
+        console.log('📋 錯誤資料:', {
+            fileName: fileName,
+            errorType: errorType,
+            errorMessage: errorMessage ? errorMessage.substring(0, 50) + '...' : null
+        });
+        
+        var errorText = 'Tax-OCR 錯誤報告\n' +
+            'Job ID: ' + jobId + '\n' +
+            '檔案名稱: ' + fileName + '\n' +
+            '錯誤類型: ' + errorType + '\n' +
+            '錯誤訊息: ' + errorMessage + '\n' +
+            '時間: ' + new Date().toLocaleString();
+
+        console.log('📝 準備複製的文字長度:', errorText.length);
+
+        // 使用現代瀏覽器的 Clipboard API
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            console.log('✅ 使用 Clipboard API');
+            navigator.clipboard.writeText(errorText).then(function() {
+                console.log('✅ 複製成功');
+                showNotification('錯誤訊息已複製到剪貼簿', 'success');
+            }).catch(function(err) {
+                console.error('❌ Clipboard API 複製失敗:', err);
+                fallbackCopyTextToClipboard(errorText);
+            });
+        } else {
+            // 舊瀏覽器的 fallback 方法
+            console.log('⚠️ Clipboard API 不可用，使用 fallback 方法');
+            fallbackCopyTextToClipboard(errorText);
+        }
+    }
+
+    function copyErrorMessage(jobId, fileName, errorType, errorMessage) {
+        /**
+         * 複製錯誤訊息到剪貼簿（舊版本，保留以便相容）
+         */
+        var errorText = 'Tax-OCR 錯誤報告\n' +
+            'Job ID: ' + jobId + '\n' +
+            '檔案名稱: ' + fileName + '\n' +
+            '錯誤類型: ' + errorType + '\n' +
+            '錯誤訊息: ' + errorMessage + '\n' +
+            '時間: ' + new Date().toLocaleString();
+
+        // 使用現代瀏覽器的 Clipboard API
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(errorText).then(function() {
+                showNotification('錯誤訊息已複製到剪貼簿', 'success');
+            }).catch(function(err) {
+                console.error('複製失敗:', err);
+                fallbackCopyTextToClipboard(errorText);
+            });
+        } else {
+            // 舊瀏覽器的 fallback 方法
+            fallbackCopyTextToClipboard(errorText);
+        }
+    }
+
+    function fallbackCopyTextToClipboard(text) {
+        /**
+         * 舊瀏覽器的複製方法
+         */
+        console.log('🔄 使用 fallback 複製方法');
+        
+        var textArea = document.createElement("textarea");
+        textArea.value = text;
+        
+        // 避免在 iOS 上出現縮放
+        textArea.style.top = "0";
+        textArea.style.left = "0";
+        textArea.style.position = "fixed";
+
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+
+        try {
+            var successful = document.execCommand('copy');
+            console.log('📋 execCommand 結果:', successful);
+            
+            if (successful) {
+                showNotification('錯誤訊息已複製到剪貼簿', 'success');
+            } else {
+                showNotification('複製失敗，請手動複製', 'warning');
+            }
+        } catch (err) {
+            console.error('❌ Fallback 複製失敗:', err);
+            showNotification('複製失敗，請手動複製', 'warning');
+        }
+
+        document.body.removeChild(textArea);
+    }
+
+    // 🆕 自動調整 textarea 高度的函數
+    function autoResizeTextarea(textarea) {
+        /**
+         * 根據內容自動調整 textarea 的高度
+         */
+        if (!textarea) return;
+        
+        // 重置高度以獲得正確的 scrollHeight
+        textarea.style.height = 'auto';
+        
+        // 計算所需高度（最小3行，最大10行）
+        var minHeight = 3 * 20; // 3行 * 行高
+        var maxHeight = 10 * 20; // 10行 * 行高
+        var scrollHeight = textarea.scrollHeight;
+        
+        // 設定新高度
+        var newHeight = Math.max(minHeight, Math.min(maxHeight, scrollHeight));
+        textarea.style.height = newHeight + 'px';
+        
+        // 如果內容超過最大高度，顯示滾動條
+        if (scrollHeight > maxHeight) {
+            textarea.style.overflowY = 'auto';
+        } else {
+            textarea.style.overflowY = 'hidden';
+        }
+    }
+
+    // 🆕 計算稅率的函數
+    function calculateTaxRate(totalAmount, withholdingTax) {
+        /**
+         * 計算稅率：扣繳稅額 / 各類給付總額 * 100%
+         * @param {number} totalAmount - 各類給付總額或各類收益總額
+         * @param {number} withholdingTax - 扣繳稅額
+         * @returns {string} - 格式化的稅率字串（例如："10.00%"）
+         */
+        if (!totalAmount || totalAmount === 0) {
+            return '-';
+        }
+        
+        var rate = (withholdingTax / totalAmount) * 100;
+        return rate.toFixed(2) + '%';
+    }
+</script>
+
+<!-- 除錯工具（開發環境） -->
+<script src="{{ url_for('static', filename='/js/debug_helper.js') }}"></script>
+{% endblock %}

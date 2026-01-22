@@ -1,0 +1,695 @@
+{% extends "base.html" %}
+
+{% block title %}權限管理 - 稅務資料自動化平台{% endblock %}
+
+{% block content %}
+<div class="page-header-section">
+    <div class="clearfix">
+        <div class="pull-left">
+            <h1><i class="fa fa-shield"></i> 權限管理</h1>
+            <p>管理使用者權限與案件存取控制</p>
+        </div>
+    </div>
+</div>
+
+<!-- Stats -->
+<div class="row">
+    <div class="col-md-4">
+        <div class="stats-card">
+            <div class="clearfix">
+                <div class="pull-left">
+                    <div class="stats-label">總使用者數</div>
+                    <div class="stats-number" id="total-users">4</div>
+                </div>
+                <div class="pull-right">
+                    <i class="fa fa-users stats-icon"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="stats-card">
+            <div class="clearfix">
+                <div class="pull-left">
+                    <div class="stats-label">系統管理員</div>
+                    <div class="stats-number" id="admin-users">1</div>
+                </div>
+                <div class="pull-right">
+                    <i class="fa fa-shield stats-icon" style="color: #e74c3c;"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="stats-card">
+            <div class="clearfix">
+                <div class="pull-left">
+                    <div class="stats-label">可管理案件</div>
+                    <div class="stats-number" id="total-cases">3</div>
+                </div>
+                <div class="pull-right">
+                    <i class="fa fa-building stats-icon" style="color: #3498db;"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- User Management Table -->
+<div class="card">
+    <div class="card-header">
+        <div class="clearfix">
+            <div class="pull-left">
+                <h3>使用者管理</h3>
+            </div>
+            <div class="pull-right">
+                <button class="btn btn-primary btn-sm" data-toggle="modal" data-target="#userModal">
+                    <i class="fa fa-plus"></i> 新增使用者
+                </button>
+            </div>
+        </div>
+        <div style="margin-top: 15px;">
+            <div class="input-group" style="max-width: 400px;">
+                <span class="input-group-addon"><i class="fa fa-search"></i></span>
+                <input type="text" class="form-control" id="search-users" placeholder="搜尋使用者姓名、電子郵件或角色...">
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th class="text-center">使用者名稱</th>
+                        <th class="text-center">使用者信箱</th>
+                        <th class="text-center">角色</th>
+                        <th class="text-center">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="users-table">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- User Modal -->
+<div class="modal fade" id="userModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+                <h4 class="modal-title" id="userModalTitle">新增使用者</h4>
+            </div>
+            <div class="modal-body">
+                <form id="user-form">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>姓名 <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="user-name" placeholder="請輸入姓名">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>電子郵件 <span class="text-danger">*</span></label>
+                                <input type="email" class="form-control" id="user-email" placeholder="請輸入電子郵件">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>角色權限</label>
+                        <select class="form-control" id="user-role">
+                            <!-- 選項將由 JavaScript 動態生成 -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>可存取案件</label>
+                        <div class="input-group" style="margin-bottom: 10px;">
+                            <span class="input-group-addon"><i class="fa fa-search"></i></span>
+                            <input type="text" class="form-control" id="search-cases" placeholder="搜尋客戶名稱或客戶編碼...">
+                        </div>
+                        <div style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 6px; padding: 10px;" id="cases-list">
+                            <!-- Cases will be loaded here -->
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="save-user-btn">建立</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// API Base URL
+var API_BASE_URL = '/api';
+var USER_API_URL = '/api/users';
+
+// 當前使用者角色
+var currentUserRole = '{{ userRole }}';
+
+// 使用者資料（從 API 載入）
+var users = [];
+
+// 從 API 載入的案件列表
+var allCases = [];
+
+var roleLabels = {
+    'admin': '系統管理員',
+    'accountant': '案件管理員',
+    'reporter': '一般使用者',
+    'manager': '唯讀使用者'
+};
+
+var roleColors = {
+    'admin': 'danger',
+    'accountant': 'warning',
+    'reporter': 'info',
+    'manager': 'success'
+};
+
+// 角色優先級：數字越小優先級越高
+var rolePriority = {
+    'admin': 1,
+    'accountant': 2,
+    'reporter': 3,
+    'manager': 4
+};
+
+var editingUserId = null;
+var selectedCases = [];
+
+// 根據當前使用者角色取得可用的角色選項
+function getAvailableRoles() {
+    console.log('當前使用者角色:', currentUserRole);
+    
+    if (currentUserRole.includes('admin')) {
+        // admin 可以設定所有角色
+        console.log('使用者是 admin，顯示所有角色選項');
+        return [
+            { value: 'admin', label: '系統管理員 - 全系統所有案件完整權限' },
+            { value: 'accountant', label: '案件管理員 - 可管理被授權的案件' },
+            { value: 'reporter', label: '一般使用者 - 可編輯被授權的案件' },
+            { value: 'manager', label: '唯讀使用者 - 僅可檢視被授權的案件' }
+        ];
+    } else if (currentUserRole.includes('accountant')) {
+        // accountant 只能設定 accountant 和 reporter
+        console.log('使用者是 accountant，只顯示 accountant 和 reporter');
+        return [
+            { value: 'accountant', label: '案件管理員 - 可管理被授權的案件' },
+            { value: 'reporter', label: '一般使用者 - 可編輯被授權的案件' }
+        ];
+    }
+    console.log('使用者角色不符合，返回空陣列');
+    return [];
+}
+
+// 渲染角色下拉選單
+function renderRoleOptions(selectedRole) {
+    var availableRoles = getAvailableRoles();
+    var html = '';
+    
+    availableRoles.forEach(function(role) {
+        var selected = (selectedRole === role.value) ? 'selected' : '';
+        html += '<option value="' + role.value + '" ' + selected + '>' + role.label + '</option>';
+    });
+    
+    $('#user-role').html(html);
+}
+
+// 檢查當前使用者是否可以編輯指定角色的使用者
+function canEditUserRole(userRole) {
+    if (currentUserRole.includes('admin')) {
+        return true; // admin 可以編輯所有角色
+    } else if (currentUserRole.includes('accountant')) {
+        // accountant 只能編輯 accountant 和 reporter
+        return userRole === 'accountant' || userRole === 'reporter';
+    }
+    return false;
+}
+
+$(document).ready(function() {
+    // 初始化角色下拉選單
+    renderRoleOptions('reporter');
+    
+    // 載入使用者列表
+    loadUsers();
+    
+    // 載入案件列表
+    loadAllCases();
+
+    renderUsers();
+    updateStats();
+    
+    // Search users
+    $('#search-users').on('input', function() {
+        renderUsers();
+    });
+    
+    // Search cases
+    $('#search-cases').on('input', function() {
+        renderCasesList();
+    });
+
+    // Open modal for new user
+    $('#userModal').on('show.bs.modal', function() {
+        if (!editingUserId) {
+            $('#userModalTitle').text('新增使用者');
+            $('#save-user-btn').text('建立');
+            $('#user-form')[0].reset();
+            selectedCases = [];
+            // 渲染角色選項（新增使用者時預設為 reporter）
+            renderRoleOptions('reporter');
+            renderCasesList();
+        }
+    });
+
+    // Save user
+    $('#save-user-btn').click(function() {
+        saveUser();
+    });
+});
+
+// ============ API 調用函數 ============
+
+function loadUsers() {
+    $.ajax({
+        url: USER_API_URL,
+        method: 'GET',
+        success: function(response) {
+            if (response.success) {
+                users = response.users.map(function(u) {
+                    return {
+                        id: u.id,
+                        name: u.username,
+                        email: u.email,
+                        role: u.user_role || 'reporter',
+                        accessibleCases: [],
+                        lastLogin: null,
+                        enabled: u.enabled
+                    };
+                });
+                console.log('已載入 ' + users.length + ' 個使用者');
+                renderUsers();
+                updateStats();
+            } else {
+                console.error('載入使用者失敗:', response.error);
+                showNotification('載入使用者資料失敗', 'danger');
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('載入使用者失敗:', error);
+            showNotification('載入使用者資料失敗', 'danger');
+        }
+    });
+}
+
+function loadAllCases() {
+    // 根據當前使用者角色決定要載入哪些案件
+    var url = '/api/cases';
+    
+    // 如果是 admin，載入所有案件
+    // 如果是 accountant，只載入有權限的案件
+    if (currentUserRole.includes('admin')) {
+        // admin 可以看到所有案件
+        url = '/api/cases?all=true';
+    } else if (currentUserRole.includes('accountant')) {
+        // accountant 只能看到自己有權限的案件
+        url = '/api/cases';
+    } else {
+        // 其他角色不應該訪問此頁面
+        console.error('權限不足，無法載入案件列表');
+        allCases = [];
+        renderCasesList();
+        updateStats();
+        return;
+    }
+    
+    $.ajax({
+        url: url,
+        method: 'GET',
+        success: function(data) {
+            allCases = data;
+            console.log('已載入 ' + allCases.length + ' 個案件 (角色: ' + currentUserRole + ')');
+            renderCasesList();
+            updateStats();
+        },
+        error: function(xhr, status, error) {
+            console.error('載入案件失敗:', error, xhr);
+            console.error('API URL:', url);
+            console.error('狀態碼:', xhr.status);
+            console.error('回應:', xhr.responseText);
+            
+            // 如果是 404，可能是 API 路徑問題
+            if (xhr.status === 404) {
+                console.error('API 端點不存在，請檢查路徑是否正確');
+            }
+            
+            // 不顯示錯誤通知，因為可能沒有案件是正常的
+            allCases = [];
+            renderCasesList();
+            updateStats();
+        }
+    });
+}
+
+function loadUserCases(userId) {
+    // 載入使用者可存取的案件
+    $.ajax({
+        url: USER_API_URL + '/' + userId + '/cases',
+        method: 'GET',
+        success: function(response) {
+            if (response.success) {
+                selectedCases = response.cases.map(function(c) { return String(c.case_id); });
+                console.log('已載入使用者 ' + userId + ' 的 ' + selectedCases.length + ' 個案件');
+                renderCasesList();
+            } else {
+                console.error('載入使用者案件失敗:', response.error);
+                selectedCases = [];
+                renderCasesList();
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('載入使用者案件失敗:', error);
+            selectedCases = [];
+            renderCasesList();
+        }
+    });
+}
+
+// ============ 使用者管理函數 ============
+
+function saveUser() {
+    var name = $('#user-name').val().trim();
+    var email = $('#user-email').val().trim();
+    var role = $('#user-role').val();
+
+    if (!name || !email) {
+        showNotification('請填寫所有必填欄位', 'danger');
+        return;
+    }
+
+    // 驗證電子郵件格式
+    var emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        showNotification('請輸入有效的電子郵件地址', 'danger');
+        return;
+    }
+
+    if (editingUserId) {
+        // 更新使用者資料和案件權限
+        $.ajax({
+            url: USER_API_URL + '/' + editingUserId,
+            method: 'PUT',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                username: name,
+                email: email,
+                role: role,
+                case_ids: selectedCases
+            }),
+            success: function(response) {
+                if (response.success) {
+                    showNotification('使用者資料更新成功', 'success');
+                    $('#userModal').modal('hide');
+                    editingUserId = null;
+                    selectedCases = [];
+                    loadUsers();
+                } else {
+                    showNotification('更新失敗: ' + response.error, 'danger');
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('更新使用者資料失敗:', error);
+                var errorMsg = '更新使用者資料失敗';
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    errorMsg += ': ' + xhr.responseJSON.error;
+                }
+                showNotification(errorMsg, 'danger');
+            }
+        });
+    } else {
+        // 新增使用者
+        $.ajax({
+            url: USER_API_URL,
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                username: name,
+                email: email,
+                role: role,
+                case_ids: selectedCases,
+                password: '12345678'  // 預設密碼
+            }),
+            success: function(response) {
+                if (response.success) {
+                    showNotification('使用者建立成功（預設密碼：12345678）', 'success');
+                    $('#userModal').modal('hide');
+                    selectedCases = [];
+                    loadUsers();
+                } else {
+                    showNotification('建立失敗: ' + response.error, 'danger');
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('建立使用者失敗:', error);
+                var errorMsg = '建立使用者失敗';
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    errorMsg += ': ' + xhr.responseJSON.error;
+                }
+                showNotification(errorMsg, 'danger');
+            }
+        });
+    }
+}
+
+function updateStats() {
+    var totalUsers = users.length;
+    var adminUsers = users.filter(function(u) { 
+        return u.role === 'admin' || (u.role && u.role.includes('admin')); 
+    }).length;
+    var totalCases = allCases.length;
+
+    $('#total-users').text(totalUsers);
+    $('#admin-users').text(adminUsers);
+    $('#total-cases').text(totalCases);
+}
+
+// ============ 渲染函數 ============
+
+function renderUsers() {
+    var searchQuery = $('#search-users').val().toLowerCase();
+    var filtered = users.filter(function(u) {
+        var roleName = roleLabels[u.role] || u.role || '';
+        return searchQuery === '' ||
+            u.name.toLowerCase().includes(searchQuery) ||
+            u.email.toLowerCase().includes(searchQuery) ||
+            roleName.toLowerCase().includes(searchQuery);
+    });
+
+    // 按角色優先級排序：系統管理員 > 案件管理員 > 一般使用者 > 唯讀使用者
+    filtered.sort(function(a, b) {
+        var priorityA = rolePriority[a.role] || 999;
+        var priorityB = rolePriority[b.role] || 999;
+        
+        // 如果角色優先級相同，則按名稱排序
+        if (priorityA === priorityB) {
+            return (a.name || '').localeCompare(b.name || '');
+        }
+        
+        return priorityA - priorityB;
+    });
+
+    if (filtered.length === 0) {
+        $('#users-table').html(
+            '<tr><td colspan="4" class="text-center" style="padding: 60px 0;">' +
+            '<i class="fa fa-users" style="font-size: 48px; color: #ccc;"></i>' +
+            '<p class="text-muted" style="margin-top: 15px;">沒有找到符合條件的使用者</p>' +
+            '</td></tr>'
+        );
+        return;
+    }
+
+    var html = '';
+    filtered.forEach(function(u) {
+        var accessibleCasesHtml = '';
+        if (u.accessibleCases && u.accessibleCases.length > 0) {
+            u.accessibleCases.forEach(function(caseId) {
+                var c = allCases.find(function(cs) { return cs.id == caseId; });
+                if (c) {
+                    accessibleCasesHtml += '<span class="badge badge-default" style="margin: 2px;">' + c.client_name + '</span> ';
+                }
+            });
+        } else {
+            accessibleCasesHtml = '<span class="text-muted">無</span>';
+        }
+
+        var roleColor = roleColors[u.role] || 'default';
+        var roleName = roleLabels[u.role] || u.role || '未設定';
+        var isAdmin = u.role === 'admin' || (u.role && u.role.includes('admin'));
+        
+        // 檢查當前使用者是否可以編輯此使用者
+        var canEdit = canEditUserRole(u.role);
+        
+        // 如果該使用者是 admin，只有當前登入者也是 admin 才顯示操作按鈕
+        var showActionButtons = true;
+        if (isAdmin && !currentUserRole.includes('admin')) {
+            showActionButtons = false;
+        }
+
+        html += '<tr>' +
+                '<td class="text-center">' +
+                '<strong>' + (u.name || '未命名') + '</strong>' +
+                '</td>' +
+                '<td class="text-center">' +
+                (u.email || '') +
+                '</td>' +
+                '<td class="text-center">' +
+                '<span class="badge badge-' + roleColor + '">' + roleName + '</span>' +
+                '</td>' +
+                '<td class="text-center">';
+        
+        if (showActionButtons) {
+            html += '<button class="btn btn-default btn-xs" onclick="editUser(' + u.id + ')" style="margin-right: 5px;" ' +
+                    (canEdit ? '' : 'disabled') + '>' +
+                    '<i class="fa fa-edit"></i> 編輯' +
+                    '</button>' +
+                    '<button class="btn btn-danger btn-xs" onclick="deleteUser(' + u.id + ')" ' +
+                    (!canEdit ? 'disabled' : '') + '>' +
+                    '<i class="fa fa-trash"></i> 刪除' +
+                    '</button>';
+        } else {
+            html += '<span class="text-muted">-</span>';
+        }
+        
+        html += '</td>' +
+                '</tr>';
+    });
+
+    $('#users-table').html(html);
+}
+
+function renderCasesList() {
+    var searchQuery = $('#search-cases').val().toLowerCase();
+    var filtered = allCases.filter(function(c) {
+        return searchQuery === '' ||
+            (c.client_name && c.client_name.toLowerCase().includes(searchQuery)) ||
+            (c.client_code && c.client_code.toLowerCase().includes(searchQuery));
+    });
+
+    if (filtered.length === 0) {
+        $('#cases-list').html(
+            '<div class="text-center text-muted" style="padding: 20px;">' +
+            '沒有找到符合條件的案件' +
+            '</div>'
+        );
+        return;
+    }
+
+    var html = '';
+    filtered.forEach(function(c) {
+        var checked = selectedCases.includes(String(c.id));
+        var caseLabel = (c.client_code || '') + ' - ' + (c.year || '') + ' (' + (c.client_name || '未命名') + ')';
+        html += '<div style="padding: 8px; border-bottom: 1px solid #eee;">' +
+                '<label style="margin: 0; cursor: pointer; font-weight: normal;">' +
+                '<input type="checkbox" value="' + c.id + '" ' + (checked ? 'checked' : '') + ' onchange="toggleCase(\'' + c.id + '\')" style="margin-right: 8px;">' +
+                '<strong>' + caseLabel + '</strong>' +
+                '<div class="text-muted small">統編：' + (c.tax_id || '') + '</div>' +
+                '</label>' +
+                '</div>';
+    });
+
+    $('#cases-list').html(html);
+}
+
+function toggleCase(caseId) {
+    var index = selectedCases.indexOf(caseId);
+    if (index > -1) {
+        selectedCases.splice(index, 1);
+    } else {
+        selectedCases.push(caseId);
+    }
+}
+
+function editUser(userId) {
+    editingUserId = userId;
+    var user = users.find(function(u) { return u.id === userId; });
+    
+    // 檢查是否有權限編輯此使用者
+    if (!canEditUserRole(user.role)) {
+        showNotification('您沒有權限編輯此使用者', 'danger');
+        return;
+    }
+    
+    $('#userModalTitle').text('編輯使用者');
+    $('#save-user-btn').text('更新');
+    $('#user-name').val(user.name);
+    $('#user-email').val(user.email);
+    
+    // 根據當前使用者角色渲染可用的角色選項
+    renderRoleOptions(user.role || 'reporter');
+    
+    // 載入使用者的案件權限
+    loadUserCases(userId);
+    
+    $('#userModal').modal('show');
+}
+
+function deleteUser(userId) {
+    var user = users.find(function(u) { return u.id === userId; });
+    
+    // 檢查是否有權限刪除此使用者
+    if (!canEditUserRole(user.role)) {
+        showNotification('您沒有權限刪除此使用者', 'danger');
+        return;
+    }
+    
+    if (confirm('確定要刪除此使用者嗎？此操作無法復原。')) {
+        $.ajax({
+            url: USER_API_URL + '/' + userId,
+            method: 'DELETE',
+            success: function(response) {
+                if (response.success) {
+                    showNotification('使用者刪除成功', 'success');
+                    loadUsers();
+                } else {
+                    showNotification('刪除失敗: ' + response.error, 'danger');
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('刪除使用者失敗:', error);
+                var errorMsg = '刪除使用者失敗';
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    errorMsg += ': ' + xhr.responseJSON.error;
+                }
+                showNotification(errorMsg, 'danger');
+            }
+        });
+    }
+}
+
+function showNotification(message, type) {
+    // 簡單的通知實作
+    var alertClass = 'alert-' + (type || 'info');
+    var alertHtml = '<div class="alert ' + alertClass + ' alert-dismissible" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 9999; min-width: 300px;">' +
+                    '<button type="button" class="close" data-dismiss="alert"><span>&times;</span></button>' +
+                    message +
+                    '</div>';
+    $('body').append(alertHtml);
+    
+    // 3秒後自動消失
+    setTimeout(function() {
+        $('.alert').fadeOut(function() {
+            $(this).remove();
+        });
+    }, 3000);
+}
+</script>
+{% endblock %}

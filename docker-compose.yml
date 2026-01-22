@@ -1,0 +1,123 @@
+# docker-compose.yml
+# Tax AI OCR 完整服務配置
+
+version: '3.8'
+
+services:
+  # PostgreSQL 資料庫
+  postgres:
+    image: postgres:15-alpine
+    container_name: taxai_postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-taxai}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-taxai_password}
+      POSTGRES_DB: ${DB_NAME:-taxai}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-taxai}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis (Celery Broker)
+  redis:
+    image: redis:7-alpine
+    container_name: taxai_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Flask Web 應用
+  web:
+    build: .
+    container_name: taxai_web
+    ports:
+      - "5002:5002"
+    environment:
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
+      - DATABASE_URL=postgresql://${DB_USER:-taxai}:${DB_PASSWORD:-taxai_password}@postgres:5432/${DB_NAME:-taxai}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - TAX_OCR_UPLOAD_BASE=/app/uploads
+      - AZURE_DI_ENDPOINT=${AZURE_DI_ENDPOINT}
+      - AZURE_DI_KEY=${AZURE_DI_KEY}
+      - AZURE_DI_MODEL=${AZURE_DI_MODEL:-prebuilt-invoice}
+      - AZURE_DI_CUSTOM_ENDPOINT=${AZURE_DI_CUSTOM_ENDPOINT}
+      - AZURE_DI_CUSTOM_KEY=${AZURE_DI_CUSTOM_KEY}
+      - AZURE_DI_401_MODEL=${AZURE_DI_401_MODEL:-401}
+      - AZURE_DI_403_MODEL=${AZURE_DI_403_MODEL:-403}
+      - AZURE_OPENAI_KEY=${AZURE_OPENAI_KEY}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION:-2024-12-01-preview}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4.1-mini}
+      - LLM_PROVIDER=${LLM_PROVIDER:-azure_openai}
+    volumes:
+      - ./uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Celery Worker
+  celery_worker:
+    build: .
+    container_name: taxai_celery_worker
+    command: celery -A celery_app worker --loglevel=info --concurrency=4
+    environment:
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
+      - DATABASE_URL=postgresql://${DB_USER:-taxai}:${DB_PASSWORD:-taxai_password}@postgres:5432/${DB_NAME:-taxai}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - TAX_OCR_UPLOAD_BASE=/app/uploads
+      - AZURE_DI_ENDPOINT=${AZURE_DI_ENDPOINT}
+      - AZURE_DI_KEY=${AZURE_DI_KEY}
+      - AZURE_DI_MODEL=${AZURE_DI_MODEL:-prebuilt-invoice}
+      - AZURE_DI_CUSTOM_ENDPOINT=${AZURE_DI_CUSTOM_ENDPOINT}
+      - AZURE_DI_CUSTOM_KEY=${AZURE_DI_CUSTOM_KEY}
+      - AZURE_DI_401_MODEL=${AZURE_DI_401_MODEL:-401}
+      - AZURE_DI_403_MODEL=${AZURE_DI_403_MODEL:-403}
+      - AZURE_OPENAI_KEY=${AZURE_OPENAI_KEY}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION:-2024-12-01-preview}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4.1-mini}
+      - LLM_PROVIDER=${LLM_PROVIDER:-azure_openai}
+    volumes:
+      - ./uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Celery Beat (排程器)
+  celery_beat:
+    build: .
+    container_name: taxai_celery_beat
+    command: celery -A celery_app beat --loglevel=info
+    environment:
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - DATABASE_URL=postgresql://${DB_USER:-taxai}:${DB_PASSWORD:-taxai_password}@postgres:5432/${DB_NAME:-taxai}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
+      - celery_worker
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

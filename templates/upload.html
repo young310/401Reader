@@ -1,0 +1,425 @@
+{% extends "base.html" %}
+
+{% block title %}憑證上傳 - 稅務資料自動化平台{% endblock %}
+
+{% block content %}
+<div class="page-header-section">
+    <h1>憑證上傳</h1>
+    <p>上傳401申報書與各類扣繳憑單進行AI辨識</p>
+</div>
+
+<!-- Case Info -->
+<div id="case-info-container">
+    <!-- Will be loaded by JavaScript -->
+</div>
+
+<!-- Upload Section -->
+<div class="card">
+    <div class="card-header">
+        <h3>上傳文件</h3>
+    </div>
+    <div class="card-body">
+        <!-- Document Type Selection -->
+        <div class="form-group">
+            <label>選擇文件類型 <span class="text-danger">*</span></label>
+            <select class="form-control" id="document-type" style="max-width: 500px;">
+                <option value="">請選擇要上傳的文件類型</option>
+                <option value="401">營業人銷售額與稅額申報書(401)</option>
+                <option value="403">營業人銷售額與稅額申報書(403)</option>
+                <option value="withholding-slip">各類所得扣繳暨免扣繳憑單(小張)</option>
+                <option value="withholding-statement">各類所得扣繳暨免扣繳憑單申報書(大張)</option>
+                <option value="dividend-slip">股利憑單</option>
+            </select>
+            <small class="text-muted">選擇文件類型後，上傳的所有檔案都會被標記為此類型</small>
+        </div>
+
+        <!-- Upload Area -->
+        <div class="form-group">
+            <label>上傳文件（支援 PDF、JPG、PNG）</label>
+            <div class="upload-area" id="upload-area">
+                <i class="fa fa-cloud-upload"></i>
+                <p class="upload-text"><strong>請先選擇文件類型</strong></p>
+                <p class="text-muted upload-hint">選擇文件類型後即可開始上傳檔案</p>
+                <button type="button" class="btn btn-default" id="select-files-btn" disabled>選擇檔案</button>
+                <input type="file" id="file-input" multiple accept=".pdf,.jpg,.jpeg,.png" style="display: none;">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Document List -->
+<div class="card">
+    <div class="card-header">
+        <div class="clearfix">
+            <div class="pull-left">
+                <h3>已上傳文件</h3>
+            </div>
+            <div class="pull-right">
+                <span class="badge badge-info" id="doc-count">0 份文件</span>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div id="document-list">
+            <div class="text-center" style="padding: 60px 0;">
+                <i class="fa fa-file-o" style="font-size: 48px; color: #ccc;"></i>
+                <p class="text-muted" style="margin-top: 15px;">尚未上傳任何文件</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Navigation -->
+<div class="clearfix" style="margin-top: 30px;">
+    <div class="pull-left">
+        <button class="btn btn-default" onclick="window.location.href='/dashboard'">
+            <i class="fa fa-arrow-left"></i> 返回案件總覽
+        </button>
+    </div>
+    <div class="pull-right">
+        <button class="btn btn-primary" id="go-to-database-btn" disabled>
+            前往資料庫 <i class="fa fa-arrow-right"></i>
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.document-item {
+    padding: 15px;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    transition: all 0.2s;
+}
+.document-item:hover {
+    background: #f8f9fa;
+}
+.doc-icon {
+    font-size: 24px;
+    color: #3498db;
+    margin-right: 15px;
+}
+.doc-status {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+.doc-status.uploading {
+    background: #fef5e7;
+    color: #d68910;
+}
+.doc-status.processing {
+    background: #fef5e7;
+    color: #d68910;
+}
+.doc-status.completed {
+    background: #d5f4e6;
+    color: #229954;
+}
+.doc-status.error {
+    background: #fadbd8;
+    color: #c0392b;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// API Base URL
+// API Base URL - FastAPI 後端服務
+var API_BASE_URL = '/api';
+
+var currentCase = null;
+var caseId = null;
+var documents = [];  // 本次 session 上傳的檔案列表（不從資料庫載入）
+var selectedDocType = '';
+// var currentBatchId = null;  // ❌ 已移除 - 新架構不使用 Batch
+// var pollInterval = null;     // ❌ 已移除 - 上傳頁面不追蹤辨識進度
+
+var docTypeLabels = {
+    '401': '營業人銷售額與稅額申報書(401)',
+    '403': '營業人銷售額與稅額申報書(403)',
+    'withholding-slip': '各類所得扣繳暨免扣繳憑單(小張)',
+    'withholding-statement': '各類所得扣繳暨免扣繳憑單申報書(大張)',
+    'dividend-slip': '股利憑單',
+    'unknown': '未分類',
+    // 後端細分類型的映射（向下相容）
+    'GROUP_A_401': '營業人銷售額與稅額申報書(401)',
+    'GROUP_A_403': '營業人銷售額與稅額申報書(403)',
+    'GROUP_B_CERTIFICATE_PAYMENT': '各類所得扣繳暨免扣繳憑單(小張)',
+    'GROUP_B_CERTIFICATE_INCOME': '各類所得扣繳暨免扣繳憑單(小張)',
+    'GROUP_B_SUMMARY_PAYMENT': '各類所得扣繳暨免扣繳憑單申報書(大張)',
+    'GROUP_B_SUMMARY_INCOME': '各類所得扣繳暨免扣繳憑單申報書(大張)',
+    'GROUP_B_DIVIDEND_PAYMENT': '股利憑單',
+    'GROUP_B_DIVIDEND_INCOME': '股利憑單'
+};
+
+$(document).ready(function() {
+    // 從 URL 參數或 localStorage 讀取 case_id
+    var urlParams = new URLSearchParams(window.location.search);
+    caseId = urlParams.get('case_id');
+
+    if (!caseId) {
+        // 嘗試從 localStorage 讀取
+        var storedCase = localStorage.getItem('selectedCase');
+        if (storedCase) {
+            currentCase = JSON.parse(storedCase);
+            caseId = currentCase.id;
+        }
+    }
+
+    if (caseId) {
+        loadCaseInfo();
+        // 不再自動載入歷史檔案，documents 列表保持空白
+        renderDocuments();  // 顯示空列表
+    } else {
+        // 沒有案件 ID 時，強制重導向到案件總覽
+        showNotification('請先選擇一個案件', 'warning');
+        setTimeout(function() {
+            window.location.href = '/dashboard';
+        }, 1500);
+        return;
+    }
+
+    // 設置前往資料庫按鈕
+    if (caseId) {
+        $('#go-to-database-btn').prop('disabled', false).on('click', function(e) {
+            e.preventDefault();
+            window.location.href = '/database?case_id=' + caseId;
+        });
+    }
+    
+    // Document type selection
+    $('#document-type').on('change', function(e) {
+        selectedDocType = $(this).val();
+        if (selectedDocType) {
+            $('#select-files-btn').prop('disabled', false);
+            $('.upload-area').addClass('active');
+            $('.upload-text').html('<strong>拖曳文件到此處或點擊上傳</strong>');
+            $('.upload-hint').html('支援批次上傳，單檔最大 20MB，PDF 最多 15 頁<br>所有上傳的檔案將被標記為：' + docTypeLabels[selectedDocType]);
+        } else {
+            $('#select-files-btn').prop('disabled', true);
+            $('.upload-area').removeClass('active');
+            $('.upload-text').html('<strong>請先選擇文件類型</strong>');
+            $('.upload-hint').html('選擇文件類型後即可開始上傳檔案');
+        }
+    });
+    
+    // File selection - 只處理按鈕點擊，不處理 area 點擊
+    $('#select-files-btn').on('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (selectedDocType) {
+            $('#file-input')[0].click();  // 使用原生 click，避免 jQuery trigger 遞迴
+        }
+    });
+
+    // 移除 upload-area 的點擊事件，避免與按鈕衝突
+    // 如果需要點擊 area 上傳，請直接點擊按鈕
+
+    // 檔案選擇變更
+    $('#file-input').on('change', function(e) {
+        var files = this.files;
+        if (files && files.length > 0) {
+            uploadFiles(files);
+        }
+    });
+
+    // Drag and drop
+    $('#upload-area').on('dragover', function(e) {
+        e.preventDefault();
+        if (selectedDocType) {
+            $(this).css('border-color', '#3498db');
+        }
+    });
+
+    $('#upload-area').on('dragleave', function(e) {
+        e.preventDefault();
+        $(this).css('border-color', '#ddd');
+    });
+
+    $('#upload-area').on('drop', function(e) {
+        e.preventDefault();
+        $(this).css('border-color', '#ddd');
+        if (selectedDocType) {
+            var files = e.originalEvent.dataTransfer.files;
+            uploadFiles(files);
+        }
+    });
+});
+
+// 載入案件資訊
+function loadCaseInfo() {
+    if (currentCase) {
+        showCaseInfo(currentCase);
+        return;
+    }
+
+    $.ajax({
+        url: API_BASE_URL + '/cases/' + caseId,
+        method: 'GET',
+        success: function(caseData) {
+            currentCase = caseData;
+            localStorage.setItem('selectedCase', JSON.stringify(caseData));
+            showCaseInfo(caseData);
+            // 更新導航連結
+            if (window.updateCurrentCase) {
+                window.updateCurrentCase(caseData);
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('載入案件失敗:', error);
+            showCaseWarning();
+        }
+    });
+}
+
+function showCaseInfo(caseData) {
+    var html = '<div class="alert alert-info">' +
+               '<div class="row">' +
+               '<div class="col-md-4"><strong>當前案件：</strong> ' + caseData.client_name + '</div>' +
+               '<div class="col-md-4"><strong>年度：</strong> ' + caseData.year + '</div>' +
+               '<div class="col-md-4"><strong>統編：</strong> ' + caseData.tax_id + '</div>' +
+               '</div></div>';
+    $('#case-info-container').html(html);
+}
+
+function showCaseWarning() {
+    var html = '<div class="alert alert-warning">' +
+               '<i class="fa fa-exclamation-triangle"></i> 請先從案件總覽選擇一個案件' +
+               '</div>';
+    $('#case-info-container').html(html);
+}
+
+// 此函數已移除 - 上傳頁面不再從資料庫載入歷史檔案
+// 只顯示本次 session 上傳的檔案
+
+// 這些函數已不需要 - 上傳頁面只顯示「上傳完成」狀態
+
+// 檔案限制設定
+var MAX_FILE_SIZE_MB = 20;
+var MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
+// 上傳檔案到後端
+function uploadFiles(files) {
+    if (!caseId) {
+        showNotification('請先選擇案件', 'danger');
+        return;
+    }
+
+    if (!selectedDocType) {
+        showNotification('請先選擇文件類型', 'danger');
+        return;
+    }
+
+    // 前端檔案大小驗證
+    for (var i = 0; i < files.length; i++) {
+        var file = files[i];
+        if (file.size > MAX_FILE_SIZE_BYTES) {
+            var fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+            showNotification('檔案 ' + file.name + ' 大小為 ' + fileSizeMB + 'MB，超過 ' + MAX_FILE_SIZE_MB + 'MB 的限制', 'danger');
+            return;
+        }
+    }
+
+    var formData = new FormData();
+    for (var i = 0; i < files.length; i++) {
+        formData.append('files', files[i]);
+    }
+    formData.append('case_id', caseId);
+    formData.append('document_type', selectedDocType);
+
+    showLoading();
+
+    $.ajax({
+        url: API_BASE_URL + '/upload_batch',
+        method: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function(response) {
+            hideLoading();
+            // currentBatchId = response.batch_id;  // ❌ 已移除 - 新架構不返回 batch_id
+            showNotification('已上傳 ' + response.total_files + ' 個檔案', 'success');
+
+            // 將上傳的檔案加入本次 session 的列表
+            for (var i = 0; i < files.length; i++) {
+                documents.push({
+                    id: null,  // 前端暫時沒有 job_id
+                    name: files[i].name,
+                    type: selectedDocType,
+                    status: 'completed',  // 上傳完成
+                    uploadedAt: formatDate(new Date().toISOString()),
+                    progress: 100
+                });
+            }
+            
+            renderDocuments();
+
+            // 清空檔案選擇
+            $('#file-input').val('');
+        },
+        error: function(xhr, status, error) {
+            hideLoading();
+            console.error('上傳失敗:', error);
+            var errorMsg = '上傳失敗';
+            if (xhr.responseJSON && xhr.responseJSON.detail) {
+                errorMsg += '：' + xhr.responseJSON.detail;
+            }
+            showNotification(errorMsg, 'danger');
+        }
+    });
+}
+
+// 輪詢功能已移除 - 上傳頁面只負責上傳，不追蹤辨識進度
+// 辨識進度請到資料庫頁面查看
+
+function renderDocuments() {
+    $('#doc-count').text(documents.length + ' 份文件');
+    
+    if (documents.length === 0) {
+        $('#document-list').html(
+            '<div class="text-center" style="padding: 60px 0;">' +
+            '<i class="fa fa-file-o" style="font-size: 48px; color: #ccc;"></i>' +
+            '<p class="text-muted" style="margin-top: 15px;">尚未上傳任何文件</p>' +
+            '</div>'
+        );
+        return;
+    }
+    
+    var html = '';
+    documents.forEach(function(doc) {
+        // 上傳頁面只顯示「上傳完成」狀態
+        var statusClass = 'completed';
+        var statusLabel = '上傳完成';
+        var icon = 'fa-check-circle';
+        
+        html += '<div class="document-item">' +
+                '<div class="clearfix">' +
+                '<div class="pull-left">' +
+                '<i class="fa ' + icon + ' doc-icon"></i>' +
+                '</div>' +
+                '<div style="overflow: hidden;">' +
+                '<div class="clearfix">' +
+                '<div class="pull-left">' +
+                '<strong>' + doc.name + '</strong>' +
+                '<span class="doc-status ' + statusClass + '" style="margin-left: 10px;">' + statusLabel + '</span>' +
+                '</div>' +
+                '</div>' +
+                '<div class="text-muted" style="font-size: 13px; margin-top: 5px;">' +
+                '<span>' + (docTypeLabels[doc.type] || '未知類型') + '</span> • ' +
+                '<span>' + doc.uploadedAt + '</span>' +
+                '</div>' +
+                '</div>' +
+                '</div>' +
+                '</div>';
+    });
+    
+    $('#document-list').html(html);
+}
+</script>
+{% endblock %}

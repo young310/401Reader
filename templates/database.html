@@ -1,0 +1,1807 @@
+{% extends "base.html" %}
+
+{% block title %}資料庫 - 稅務資料自動化平台{% endblock %}
+
+{% block content %}
+<div class="page-header-section">
+    <h1>資料庫管理</h1>
+    <p>選擇檔案前往AI辨識校對頁面進行資料校對</p>
+</div>
+
+<!-- Warning Alert -->
+<div class="alert alert-warning" id="type-mismatch-alert" style="display: none;">
+    <i class="fa fa-exclamation-triangle"></i> 只能選擇辨識完成且相同類型的檔案：401/403 為一組，扣繳憑單/扣繳憑單申報書為一組
+</div>
+
+<!-- Case Info -->
+<div id="case-info-container">
+    <!-- Will be loaded by JavaScript -->
+</div>
+
+<!-- Table Card -->
+<div class="card">
+    <div class="card-header">
+        <div class="clearfix">
+            <div class="pull-left">
+                <h3>已上傳檔案</h3>
+                <small class="text-muted">💡 提示：可使用「檔案類型」篩選器選擇類型，再點擊左上角複選框一鍵全選</small>
+            </div>
+            <div class="pull-right">
+                <span class="badge badge-info" id="selected-count" style="display: none; margin-right: 10px;">已選擇 0
+                    個檔案</span>
+                <button class="btn btn-danger btn-sm" id="batch-delete-btn" style="display: none;">
+                    <i class="fa fa-trash"></i> 批次刪除
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th class="text-center" style="width: 50px;">
+                            <input type="checkbox" id="select-all">
+                        </th>
+                        <th class="text-center" style="max-width: 250px;">
+                            <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                <span>檔案名稱</span>
+                                <button class="btn btn-xs btn-primary" id="sort-filename-btn" title="點擊切換排序">
+                                    <i class="fa fa-sort-alpha-asc"></i>
+                                </button>
+                            </div>
+                        </th>
+                        <th class="text-center" style="min-width: 280px; max-width: 320px;">
+                            <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                <span>檔案類型</span>
+                                <select class="form-control input-sm" id="filter-type" style="width: 140px;">
+                                    <option value="all">全部類型</option>
+                                    <option value="401">401 申報書</option>
+                                    <option value="403">403 申報書</option>
+                                    <option value="withholding-slip-支出">小張 - 支出</option>
+                                    <option value="withholding-slip-收入">小張 - 收入</option>
+                                    <option value="withholding-statement-支出">大張 - 支出</option>
+                                    <option value="withholding-statement-收入">大張 - 收入</option>
+                                    <option value="dividend-slip-支出">股利憑單 - 支出</option>
+                                    <option value="dividend-slip-收入">股利憑單 - 收入</option>
+                                    <option value="all-income">所有收入</option>
+                                    <option value="all-expense">所有支出</option>
+                                </select>
+                            </div>
+                        </th>
+                        <th class="text-center" style="min-width: 140px;">
+                            <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                <span>上傳時間</span>
+                                <button class="btn btn-xs btn-primary" id="sort-time-btn" title="點擊切換排序">
+                                    <i class="fa fa-sort-amount-desc"></i>
+                                </button>
+                            </div>
+                        </th>
+                        <th class="text-center" style="min-width: 140px;">
+                            <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                <span>狀態</span>
+                                <select class="form-control input-sm" id="filter-status" style="width: 100px;">
+                                    <option value="all">全部</option>
+                                    <option value="completed">辨識完成</option>
+                                    <option value="error">辨識失敗</option>
+                                    <option value="processing">辨識中</option>
+                                    <option value="pending">待辨識</option>
+                                </select>
+                            </div>
+                        </th>
+                        <th class="text-center" style="width: 100px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="documents-table">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<style>
+/* 美化操作按鈕 */
+.btn-group-xs .btn {
+    transition: all 0.2s ease;
+}
+
+.btn-group-xs .btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.btn-group-xs .btn:active {
+    transform: translateY(0);
+}
+
+.btn-group-xs .btn-info {
+    background-color: #5bc0de;
+    border-color: #46b8da;
+}
+
+.btn-group-xs .btn-info:hover {
+    background-color: #31b0d5;
+    border-color: #269abc;
+}
+
+.btn-group-xs .btn-danger {
+    background-color: #d9534f;
+    border-color: #d43f3a;
+}
+
+.btn-group-xs .btn-danger:hover {
+    background-color: #c9302c;
+    border-color: #ac2925;
+}
+
+/* 確保按鈕組緊密排列 */
+.btn-group-xs {
+    display: inline-flex;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    border-radius: 3px;
+}
+
+.btn-group-xs .btn {
+    margin: 0 !important;
+    border-left-width: 0;
+}
+
+.btn-group-xs .btn:first-child {
+    border-left-width: 1px;
+}
+
+/* 收支方向編輯按鈕 */
+.stream-edit-btn {
+    transition: all 0.2s ease;
+    background-color: #f5f5f5;
+    border-color: #ddd;
+    color: #666;
+    white-space: nowrap;
+}
+
+.stream-edit-btn:hover {
+    background-color: #e0e0e0;
+    border-color: #ccc;
+    color: #333;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+}
+
+.stream-edit-btn:active {
+    transform: translateY(0);
+}
+
+/* 檔案名稱欄位 - 文字截斷 */
+.table tbody td {
+    vertical-align: middle !important;
+}
+
+/* 檔案類型欄位 - 確保不換行 */
+.badge {
+    white-space: nowrap;
+    display: inline-block;
+}
+
+/* 檔案名稱 hover 效果 */
+.table tbody td[title]:hover {
+    background-color: #f9f9f9;
+}
+
+/* 檔案名稱連結和文字的 hover 效果 */
+.table tbody td a[title],
+.table tbody td span[title] {
+    cursor: pointer;
+}
+
+/* 移除禁用按鈕的禁止符號 */
+#goto-verification-btn:disabled {
+    cursor: default !important;
+}
+
+/* 錯誤訊息行樣式 - 自動換行 */
+.error-row td {
+    word-wrap: break-word;
+    word-break: break-all;
+    white-space: normal !important;
+}
+
+.error-row .error-message-text {
+    display: block;
+    max-width: 100%;
+    word-wrap: break-word;
+    word-break: break-word;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+}
+
+/* 限制表格欄位不被錯誤訊息撐開 */
+.table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+.table tbody td:nth-child(2) {
+    max-width: 250px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+</style>
+
+<!-- Navigation -->
+<div class="clearfix" style="margin-top: 30px;">
+    <div class="pull-left">
+        <button class="btn btn-default" id="back-btn">
+            <i class="fa fa-arrow-left"></i> 返回憑證上傳
+        </button>
+    </div>
+    <div class="pull-right">
+        <button class="btn btn-primary" id="goto-verification-btn" disabled title="要勾選檔案後才可以前往校對頁面">
+            前往校對頁面 <i class="fa fa-arrow-right"></i>
+        </button>
+    </div>
+</div>
+
+<!-- Edit History Modal -->
+<div class="modal fade" id="editHistoryModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+                <h4 class="modal-title">
+                    <i class="fa fa-history"></i> 編輯軌跡
+                </h4>
+            </div>
+            <div class="modal-body">
+                <div id="history-loading" class="text-center" style="padding: 40px;">
+                    <i class="fa fa-spinner fa-spin fa-3x"></i>
+                    <p class="text-muted" style="margin-top: 15px;">載入中...</p>
+                </div>
+                <div id="history-content" style="display: none;">
+                    <div class="alert alert-info">
+                        <strong>檔案名稱：</strong> <span id="history-filename"></span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th class="text-center" style="width: 180px;">編輯時間</th>
+                                    <th class="text-center" style="width: 120px;">編輯人員</th>
+                                    <th>操作說明</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-table-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="history-empty" style="display: none; text-center; padding: 40px;">
+                    <i class="fa fa-info-circle fa-3x text-muted"></i>
+                    <p class="text-muted" style="margin-top: 15px;">此檔案尚無編輯記錄</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">關閉</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // API Base URL
+    // API Base URL - FastAPI 後端服務
+    var API_BASE_URL = '/api';
+
+    var currentCase = null;
+    var caseId = null;
+    var documents = [];
+    var allJobs = [];  // 儲存完整的 Job 資料
+    var selectedDocs = [];
+    var sortOrder = 'desc'; // 'desc' = 最新在上 (預設), 'asc' = 最舊在上
+    var filenameSortOrder = 'asc'; // 'asc' = A-Z (預設), 'desc' = Z-A
+    var currentSortBy = 'time'; // 'time' = 按時間排序 (預設), 'filename' = 按檔案名稱排序
+
+    // 簡化的文件類型標籤（與上傳頁面一致）
+    var docTypeLabels = {
+        '401': '營業人銷售額與稅額申報書(401)',
+        '403': '營業人銷售額與稅額申報書(403)',
+        'withholding-slip': '各類所得扣繳暨免扣繳憑單(小張)',
+        'withholding-statement': '各類所得扣繳暨免扣繳憑單申報書(大張)',
+        'dividend-slip': '股利憑單'
+    };
+
+    // 收入/支出標籤（顯示在 detected_stream）
+    var streamLabels = {
+        '支出': '—支出',
+        '收入': '—收入'
+    };
+
+    $(document).ready(function () {
+        // 從 URL 參數或 localStorage 讀取 case_id
+        var urlParams = new URLSearchParams(window.location.search);
+        caseId = urlParams.get('case_id');
+
+        if (!caseId) {
+            var storedCase = localStorage.getItem('selectedCase');
+            if (storedCase) {
+                currentCase = JSON.parse(storedCase);
+                caseId = currentCase.id;
+            }
+        }
+
+        if (caseId) {
+            loadCaseInfo();
+            loadCaseJobs();
+
+            // 設置按鈕
+            $('#back-btn').click(function () {
+                window.location.href = '/upload?case_id=' + caseId;
+            });
+        } else {
+            // 沒有案件 ID 時，強制重導向到案件總覽
+            showNotification('請先選擇一個案件', 'warning');
+            setTimeout(function () {
+                window.location.href = '/dashboard';
+            }, 1500);
+            return;
+        }
+
+        // Filters
+        $('#filter-type, #filter-status').change(function () {
+            renderDocuments();
+            // 🆕 filter變更時更新全選按鈕狀態
+            updateSelectAllButtonState();
+        });
+
+        // Sort by upload time
+        $('#sort-time-btn').click(function() {
+            currentSortBy = 'time';
+            toggleSortOrder();
+            renderDocuments();
+        });
+
+        // Sort by filename
+        $('#sort-filename-btn').click(function() {
+            currentSortBy = 'filename';
+            toggleFilenameSortOrder();
+            renderDocuments();
+        });
+
+        // 初始化排序按鈕狀態
+        $('#sort-time-btn').attr('title', '目前：最新在上，點擊切換為最舊在上');
+        $('#sort-filename-btn').attr('title', '目前：A-Z排序，點擊切換為Z-A排序');
+
+        // Select all
+        $('#select-all').change(function () {
+            var checked = $(this).prop('checked');
+            if (checked) {
+                smartSelectAll();
+            } else {
+                selectedDocs = [];
+            }
+            updateSelectionUI();
+            renderDocuments();
+        });
+
+        // 前往校對頁面
+        $('#goto-verification-btn').click(function () {
+            if (selectedDocs.length === 0) {
+                alert('要勾選檔案後才可以前往校對頁面');
+                return;
+            }
+            goToVerification();
+        });
+
+        // Batch delete
+        $('#batch-delete-btn').click(function () {
+            batchDeleteJobs();
+        });
+
+        // 合併 Excel (暫時使用前往校對頁面的邏輯)
+        $('#merge-export-btn').click(function () {
+            if (selectedDocs.length === 0) {
+                showNotification('請至少選擇一個檔案', 'warning');
+                return;
+            }
+            goToVerification();
+        });
+    });
+
+    // 切換排序順序
+    function toggleSortOrder() {
+        if (sortOrder === 'desc') {
+            sortOrder = 'asc';
+            $('#sort-time-btn i').removeClass('fa-sort-amount-desc').addClass('fa-sort-amount-asc');
+            $('#sort-time-btn').removeClass('btn-primary').addClass('btn-warning');
+            $('#sort-time-btn').attr('title', '目前：最舊在上，點擊切換為最新在上');
+        } else {
+            sortOrder = 'desc';
+            $('#sort-time-btn i').removeClass('fa-sort-amount-asc').addClass('fa-sort-amount-desc');
+            $('#sort-time-btn').removeClass('btn-warning').addClass('btn-primary');
+            $('#sort-time-btn').attr('title', '目前：最新在上，點擊切換為最舊在上');
+        }
+        console.log('時間排序順序已切換為:', sortOrder);
+        
+        // 重置檔案名稱排序按鈕狀態
+        resetFilenameSortButton();
+    }
+
+    // 切換檔案名稱排序順序
+    function toggleFilenameSortOrder() {
+        if (filenameSortOrder === 'asc') {
+            filenameSortOrder = 'desc';
+            $('#sort-filename-btn i').removeClass('fa-sort-alpha-asc').addClass('fa-sort-alpha-desc');
+            $('#sort-filename-btn').removeClass('btn-primary').addClass('btn-warning');
+            $('#sort-filename-btn').attr('title', '目前：Z-A排序，點擊切換為A-Z排序');
+        } else {
+            filenameSortOrder = 'asc';
+            $('#sort-filename-btn i').removeClass('fa-sort-alpha-desc').addClass('fa-sort-alpha-asc');
+            $('#sort-filename-btn').removeClass('btn-warning').addClass('btn-primary');
+            $('#sort-filename-btn').attr('title', '目前：A-Z排序，點擊切換為Z-A排序');
+        }
+        console.log('檔案名稱排序順序已切換為:', filenameSortOrder);
+        
+        // 重置時間排序按鈕狀態
+        resetTimeSortButton();
+    }
+
+    // 重置時間排序按鈕狀態
+    function resetTimeSortButton() {
+        $('#sort-time-btn i').removeClass('fa-sort-amount-asc fa-sort-amount-desc').addClass('fa-sort-amount-desc');
+        $('#sort-time-btn').removeClass('btn-warning').addClass('btn-primary');
+        $('#sort-time-btn').attr('title', '點擊按時間排序');
+    }
+
+    // 重置檔案名稱排序按鈕狀態
+    function resetFilenameSortButton() {
+        $('#sort-filename-btn i').removeClass('fa-sort-alpha-desc fa-sort-alpha-asc').addClass('fa-sort-alpha-asc');
+        $('#sort-filename-btn').removeClass('btn-warning').addClass('btn-primary');
+        $('#sort-filename-btn').attr('title', '點擊按檔案名稱排序');
+    }
+
+    // 按上傳時間排序文件
+    function sortDocumentsByTime(docs) {
+        console.log('開始排序，當前順序:', sortOrder, '文件數量:', docs.length);
+        
+        if (docs.length === 0) return docs;
+        
+        var sorted = docs.sort(function(a, b) {
+            // 使用原始的 createdAt 時間戳進行排序
+            var timeA = a.createdAt ? new Date(a.createdAt) : new Date(0);
+            var timeB = b.createdAt ? new Date(b.createdAt) : new Date(0);
+            
+            // 檢查日期是否有效
+            if (isNaN(timeA.getTime())) timeA = new Date(0);
+            if (isNaN(timeB.getTime())) timeB = new Date(0);
+            
+            if (sortOrder === 'desc') {
+                // 最新在上：時間大的在前
+                return timeB - timeA;
+            } else {
+                // 最舊在上：時間小的在前
+                return timeA - timeB;
+            }
+        });
+        
+        console.log('排序完成，第一個文件:', {
+            name: sorted[0]?.name,
+            uploadedAt: sorted[0]?.uploadedAt,
+            createdAt: sorted[0]?.createdAt
+        });
+        console.log('最後一個文件:', {
+            name: sorted[sorted.length-1]?.name,
+            uploadedAt: sorted[sorted.length-1]?.uploadedAt,
+            createdAt: sorted[sorted.length-1]?.createdAt
+        });
+        return sorted;
+    }
+
+    // 按檔案名稱排序文件
+    function sortDocumentsByFilename(docs) {
+        console.log('開始按檔案名稱排序，當前順序:', filenameSortOrder, '文件數量:', docs.length);
+        
+        if (docs.length === 0) return docs;
+        
+        var sorted = docs.sort(function(a, b) {
+            var nameA = (a.name || '').toLowerCase();
+            var nameB = (b.name || '').toLowerCase();
+            
+            if (filenameSortOrder === 'asc') {
+                // A-Z排序
+                return nameA.localeCompare(nameB, 'zh-TW', { numeric: true, sensitivity: 'base' });
+            } else {
+                // Z-A排序
+                return nameB.localeCompare(nameA, 'zh-TW', { numeric: true, sensitivity: 'base' });
+            }
+        });
+        
+        console.log('檔案名稱排序完成，第一個文件:', sorted[0]?.name);
+        console.log('最後一個文件:', sorted[sorted.length-1]?.name);
+        return sorted;
+    }
+
+    // 統一的排序函數
+    function sortDocuments(docs) {
+        if (currentSortBy === 'filename') {
+            return sortDocumentsByFilename(docs);
+        } else {
+            return sortDocumentsByTime(docs);
+        }
+    }
+
+    // 取得已完成檔案的唯一類型列表
+    function getUniqueCompletedTypes(completedDocs) {
+        var typeMap = {};
+
+        completedDocs.forEach(function(doc) {
+            var typeKey;
+            if (doc.type === '401' || doc.type === '403') {
+                // 401/403 只看 document_type
+                typeKey = doc.type;
+                typeMap[typeKey] = { type: doc.type, stream: null };
+            } else {
+                // 扣繳憑單類型需要看 type + stream 組合
+                typeKey = doc.type + '-' + (doc.detected_stream || '');
+                typeMap[typeKey] = { type: doc.type, stream: doc.detected_stream };
+            }
+        });
+
+        return Object.values(typeMap);
+    }
+
+    // 智能全選功能
+    function smartSelectAll() {
+        var filteredDocs = getFilteredDocs();
+        var completedDocs = filteredDocs.filter(function(d) {
+            var statusUpper = (d.status || '').toUpperCase();
+            return statusUpper === 'COMPLETED';
+        });
+        
+        if (completedDocs.length === 0) {
+            showNotification('沒有已完成的檔案可以選擇', 'warning');
+            return;
+        }
+        
+        var targetType = null;
+        var targetStream = null;
+        
+        // 🆕 優先檢查filter是否有選擇特定類型
+        var filterValue = $('#filter-type').val();
+        
+        if (filterValue && filterValue !== 'all') {
+            // 從filter獲取類型和收支方向
+            if (filterValue === '401' || filterValue === '403') {
+                targetType = filterValue;
+                targetStream = null;
+            } else if (filterValue === 'all-income') {
+                // 所有收入類型
+                targetType = 'all-income';
+                targetStream = '收入';
+            } else if (filterValue === 'all-expense') {
+                // 所有支出類型
+                targetType = 'all-expense';
+                targetStream = '支出';
+            } else {
+                // 格式：withholding-slip-支出
+                var parts = filterValue.split('-');
+                if (parts.length >= 2) {
+                    targetStream = parts[parts.length - 1]; // 最後一部分是收支方向
+                    targetType = parts.slice(0, -1).join('-'); // 前面部分是類型
+                }
+            }
+            console.log('從filter全選，類型:', targetType, '收支:', targetStream);
+        } else if (selectedDocs.length > 0) {
+            // 如果filter沒有選擇，但已經有選擇的檔案，根據第一個選擇的檔案決定類型
+            var firstSelectedJob = allJobs.find(function(j) { return j.id === selectedDocs[0]; });
+            if (firstSelectedJob) {
+                targetType = firstSelectedJob.document_type;
+                targetStream = firstSelectedJob.detected_stream;
+                console.log('根據已選檔案全選，類型:', targetType, '收支:', targetStream);
+            }
+        } else {
+            // 沒有filter選擇，也沒有選擇檔案，檢查是否所有已完成檔案都是同一類型
+            var uniqueTypes = getUniqueCompletedTypes(completedDocs);
+
+            if (uniqueTypes.length === 1) {
+                // 只有一種類型，直接使用該類型
+                targetType = uniqueTypes[0].type;
+                targetStream = uniqueTypes[0].stream;
+                console.log('資料庫只有一種類型，自動全選，類型:', targetType, '收支:', targetStream);
+            } else if (uniqueTypes.length > 1) {
+                // 有多種類型，提示使用者
+                showNotification('資料庫中有多種檔案類型，請先使用篩選器選擇檔案類型', 'info');
+                return;
+            } else {
+                // 沒有已完成的檔案
+                showNotification('沒有已完成的檔案可以選擇', 'warning');
+                return;
+            }
+        }
+        
+        // 根據目標類型篩選可選檔案
+        var selectableDocs = completedDocs.filter(function(doc) {
+            if (targetType === '401' || targetType === '403') {
+                // 401/403 只選同類型
+                return doc.type === targetType;
+            } else if (targetType === 'all-income') {
+                // 所有收入類型
+                return (doc.type === 'withholding-slip' || doc.type === 'withholding-statement' || doc.type === 'dividend-slip') &&
+                       doc.detected_stream === '收入';
+            } else if (targetType === 'all-expense') {
+                // 所有支出類型
+                return (doc.type === 'withholding-slip' || doc.type === 'withholding-statement' || doc.type === 'dividend-slip') &&
+                       doc.detected_stream === '支出';
+            } else {
+                // 扣繳憑單（包括股利憑單）需要同類型且同收支方向
+                return doc.type === targetType && doc.detected_stream === targetStream;
+            }
+        });
+        
+        if (selectableDocs.length === 0) {
+            var typeLabel = targetType === '401' ? '401 申報書' :
+                           targetType === '403' ? '403 申報書' :
+                           targetType === 'all-income' ? '所有收入' :
+                           targetType === 'all-expense' ? '所有支出' :
+                           docTypeLabels[targetType] + '(' + targetStream + ')';
+            showNotification('沒有可選擇的 ' + typeLabel + ' 檔案', 'warning');
+            return;
+        }
+        
+        // 更新選擇列表
+        selectedDocs = selectableDocs.map(function(d) { return d.id; });
+        
+        var typeLabel = targetType === '401' ? '401 申報書' :
+                       targetType === '403' ? '403 申報書' :
+                       targetType === 'all-income' ? '所有收入' :
+                       targetType === 'all-expense' ? '所有支出' :
+                       docTypeLabels[targetType] + '(' + targetStream + ')';
+        showNotification('已全選 ' + selectableDocs.length + ' 個 ' + typeLabel + ' 檔案', 'success');
+        
+        // 🆕 更新UI
+        renderDocuments();
+        updateSelectAllButtonState();
+    }
+
+    // 檔案選擇規則 (使用 document_type)
+    function isJobSelectable(job) {
+        // 規則 0: 未完成的檔案不可選（支援大小寫）
+        var statusUpper = (job.status || '').toUpperCase();
+        if (statusUpper !== 'COMPLETED') return false;
+
+        // 規則 1: 第一個勾選的檔案，任何完成的檔案都可選
+        if (selectedDocs.length === 0) return true;
+
+        // 取得第一個已選擇的檔案
+        var firstSelectedJob = allJobs.find(function (j) { return j.id === selectedDocs[0]; });
+        if (!firstSelectedJob) return true;
+
+        // 規則 2: 401 只能和 401 一起選
+        if (firstSelectedJob.document_type === "401") {
+            return job.document_type === "401";
+        }
+
+        // 規則 3: 403 只能和 403 一起選
+        if (firstSelectedJob.document_type === "403") {
+            return job.document_type === "403";
+        }
+
+        // 規則 4: 如果第一個是 401/403，其他非 401/403 的檔案不可選
+        if (job.document_type === "401" || job.document_type === "403") {
+            return false;
+        }
+
+        // 規則 5: 小張/大張/股利憑單只能和相同 detected_stream 的一起選
+        // (withholding-slip、withholding-statement 和 dividend-slip 可以混選，但必須是相同的 stream)
+        return firstSelectedJob.detected_stream === job.detected_stream;
+    }
+
+    // 載入案件資訊
+    function loadCaseInfo() {
+        if (currentCase) {
+            showCaseInfo(currentCase);
+            return;
+        }
+
+        $.ajax({
+            url: API_BASE_URL + '/cases/' + caseId,
+            method: 'GET',
+            success: function (caseData) {
+                currentCase = caseData;
+                localStorage.setItem('selectedCase', JSON.stringify(caseData));
+                showCaseInfo(caseData);
+                // 更新導航連結
+                if (window.updateCurrentCase) {
+                    window.updateCurrentCase(caseData);
+                }
+            },
+            error: function (xhr, status, error) {
+                console.error('載入案件失敗:', error);
+                showCaseWarning();
+            }
+        });
+    }
+
+    function showCaseInfo(caseData) {
+        var html = '<div class="alert alert-info">' +
+            '<div class="row">' +
+            '<div class="col-md-4"><strong>當前案件：</strong> ' + caseData.client_name + '</div>' +
+            '<div class="col-md-4"><strong>年度：</strong> ' + caseData.year + '</div>' +
+            '<div class="col-md-4"><strong>統編：</strong> ' + caseData.tax_id + '</div>' +
+            '</div></div>';
+        $('#case-info-container').html(html);
+    }
+
+    function showCaseWarning() {
+        var html = '<div class="alert alert-warning">' +
+            '<i class="fa fa-exclamation-triangle"></i> 請先從案件總覽選擇一個案件' +
+            '</div>';
+        $('#case-info-container').html(html);
+    }
+
+
+
+    // 載入案件的所有 Jobs
+    function loadCaseJobs() {
+        showLoading();
+        $.ajax({
+            url: API_BASE_URL + '/cases/' + caseId + '/jobs',
+            method: 'GET',
+            success: function (jobs) {
+                hideLoading();
+                allJobs = jobs;
+                documents = jobs.map(function (job) {
+                    return {
+                        id: job.id,
+                        name: job.original_filename,
+                        type: job.document_type || 'UNKNOWN',
+                        status: job.status,
+                        uploadedAt: formatDate(job.created_at),
+                        createdAt: job.created_at, // 保留原始時間戳用於排序
+                        detected_stream: job.detected_stream
+                    };
+                });
+
+
+
+                renderDocuments();
+
+                // 🆕 載入完成後，啟動狀態輪詢
+                startStatusPolling();
+            },
+            error: function (xhr, status, error) {
+                hideLoading();
+                console.error('載入檔案列表失敗:', error);
+                showNotification('載入檔案列表失敗，請重新整理頁面', 'danger');
+            }
+        });
+    }
+
+    // 前往校對頁面
+    function goToVerification() {
+        var jobIds = selectedDocs.join(',');
+        window.location.href = '/verification?jobIds=' + jobIds;
+    }
+
+    // 批量刪除 Jobs
+    function batchDeleteJobs(force) {
+        if (!force) {
+            // 第一次呼叫，先顯示確認提示
+            if (!confirm('確定要刪除選擇的 ' + selectedDocs.length + ' 個檔案嗎？')) {
+                return;
+            }
+            
+            showLoading();
+            $.ajax({
+                url: API_BASE_URL + '/jobs/batch-delete',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    job_ids: selectedDocs,
+                    force: false
+                }),
+                success: function (response) {
+                    hideLoading();
+                    
+                    // 檢查是否有警告（部分檔案被版本使用）
+                    if (response.warning && response.blocked_jobs) {
+                        var blockedCount = Object.keys(response.blocked_jobs).length;
+                        var warningMsg = '其中 ' + blockedCount + ' 個檔案已建立過版本：\n\n';
+                        
+                        for (var jobId in response.blocked_jobs) {
+                            var info = response.blocked_jobs[jobId];
+                            warningMsg += '• ' + info.filename + '\n';
+                            
+                            // 顯示版本名稱和建立者
+                            var versionList = info.versions.map(function(v) {
+                                return v.file_name + ' (建立者：' + v.creator_name + ')';
+                            }).join('、');
+                            
+                            warningMsg += '  版本：' + versionList + '\n\n';
+                        }
+                        
+                        warningMsg += '刪除後這些版本將無法重新開啟校對頁面。\n\n確定要繼續刪除嗎？';
+                        
+                        if (confirm(warningMsg)) {
+                            // 使用者確認後，強制刪除
+                            batchDeleteJobs(true);
+                        }
+                    } else if (response.ok) {
+                        // 沒有版本使用，直接刪除成功
+                        showNotification('已刪除 ' + response.deleted_count + ' 個檔案', 'success');
+                        selectedDocs = [];
+                        loadCaseJobs();
+                    }
+                },
+                error: function (xhr, status, error) {
+                    hideLoading();
+                    console.error('刪除失敗:', error);
+                    
+                    // 嘗試解析錯誤訊息
+                    var errorMsg = '刪除檔案失敗，請稍後再試';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMsg = xhr.responseJSON.message;
+                    }
+                    showNotification(errorMsg, 'danger');
+                }
+            });
+        } else {
+            // 強制刪除
+            showLoading();
+            $.ajax({
+                url: API_BASE_URL + '/jobs/batch-delete',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    job_ids: selectedDocs,
+                    force: true
+                }),
+                success: function (response) {
+                    hideLoading();
+                    showNotification('已刪除 ' + response.deleted_count + ' 個檔案', 'success');
+                    selectedDocs = [];
+                    loadCaseJobs();
+                },
+                error: function (xhr, status, error) {
+                    hideLoading();
+                    console.error('刪除失敗:', error);
+                    showNotification('刪除檔案失敗，請稍後再試', 'danger');
+                }
+            });
+        }
+    }
+
+    // 更新選擇 UI
+    function updateSelectionUI() {
+        if (selectedDocs.length > 0) {
+            $('#selected-count').show().text('已選擇 ' + selectedDocs.length + ' 個檔案');
+            $('#batch-delete-btn').show();
+            $('#goto-verification-btn').prop('disabled', false).attr('title', '前往校對頁面');
+        } else {
+            $('#selected-count').hide();
+            $('#batch-delete-btn').hide();
+            $('#goto-verification-btn').prop('disabled', true).attr('title', '要勾選檔案後才可以前往校對頁面');
+        }
+
+        // 檢查選擇的檔案是否符合規則
+        var allSelectableWithCurrentSelection = true;
+        if (selectedDocs.length > 0) {
+            allJobs.forEach(function (job) {
+                var statusUpper = (job.status || '').toUpperCase();
+                if (statusUpper === 'COMPLETED' && !isJobSelectable(job)) {
+                    allSelectableWithCurrentSelection = false;
+                }
+            });
+        }
+
+        // 顯示警告
+        if (!allSelectableWithCurrentSelection && selectedDocs.length > 0) {
+            $('#type-mismatch-alert').show();
+        } else {
+            $('#type-mismatch-alert').hide();
+        }
+        
+        // 更新全選按鈕狀態
+        updateSelectAllButtonState();
+    }
+
+    // 更新全選按鈕狀態
+    function updateSelectAllButtonState() {
+        var filteredDocs = getFilteredDocs();
+        var completedDocs = filteredDocs.filter(function(d) {
+            var statusUpper = (d.status || '').toUpperCase();
+            return statusUpper === 'COMPLETED';
+        });
+        
+        if (completedDocs.length === 0) {
+            // 沒有已完成的檔案，禁用全選按鈕
+            $('#select-all').prop('disabled', true).prop('checked', false);
+            return;
+        }
+        
+        $('#select-all').prop('disabled', false);
+        
+        // 計算當前類型下可選擇的檔案數量
+        var selectableCount = 0;
+        var selectedCount = 0;
+        
+        // 🆕 優先檢查filter是否有選擇特定類型
+        var filterValue = $('#filter-type').val();
+        var targetType = null;
+        var targetStream = null;
+        
+        if (filterValue && filterValue !== 'all') {
+            // 從filter獲取類型和收支方向
+            if (filterValue === '401' || filterValue === '403') {
+                targetType = filterValue;
+                targetStream = null;
+            } else if (filterValue === 'all-income') {
+                targetType = 'all-income';
+                targetStream = '收入';
+            } else if (filterValue === 'all-expense') {
+                targetType = 'all-expense';
+                targetStream = '支出';
+            } else {
+                var parts = filterValue.split('-');
+                if (parts.length >= 2) {
+                    targetStream = parts[parts.length - 1];
+                    targetType = parts.slice(0, -1).join('-');
+                }
+            }
+        } else if (selectedDocs.length > 0) {
+            // 如果filter沒有選擇，但有選擇檔案，根據第一個選擇的檔案決定類型
+            var firstSelectedJob = allJobs.find(function(j) { return j.id === selectedDocs[0]; });
+            if (firstSelectedJob) {
+                targetType = firstSelectedJob.document_type;
+                targetStream = firstSelectedJob.detected_stream;
+            }
+        }
+        
+        if (targetType) {
+            // 有明確的目標類型，計算可選檔案
+            completedDocs.forEach(function(doc) {
+                var isSelectable = false;
+                if (targetType === '401' || targetType === '403') {
+                    isSelectable = doc.type === targetType;
+                } else if (targetType === 'all-income') {
+                    isSelectable = (doc.type === 'withholding-slip' || doc.type === 'withholding-statement' || doc.type === 'dividend-slip') &&
+                                 doc.detected_stream === '收入';
+                } else if (targetType === 'all-expense') {
+                    isSelectable = (doc.type === 'withholding-slip' || doc.type === 'withholding-statement' || doc.type === 'dividend-slip') &&
+                                 doc.detected_stream === '支出';
+                } else {
+                    isSelectable = doc.type === targetType && doc.detected_stream === targetStream;
+                }
+                
+                if (isSelectable) {
+                    selectableCount++;
+                    if (selectedDocs.includes(doc.id)) {
+                        selectedCount++;
+                    }
+                }
+            });
+        } else {
+            // 沒有明確的目標類型，不計算任何檔案為可選
+            selectableCount = 0;
+        }
+        
+        // 設定全選按鈕狀態
+        if (selectableCount === 0) {
+            $('#select-all').prop('checked', false);
+        } else if (selectedCount === selectableCount && selectedCount > 0) {
+            $('#select-all').prop('checked', true);
+        } else {
+            $('#select-all').prop('checked', false);
+        }
+    }
+
+    // 獲取文件類型顯示文字（加入 detected_stream）
+    function getDocTypeDisplay(doc) {
+        var baseType = docTypeLabels[doc.type] || doc.type;
+
+        // 如果是 withholding 類型（包括股利憑單）且已完成辨識（有 detected_stream），加上收入/支出標籤
+        var statusUpper = (doc.status || '').toUpperCase();
+        if ((doc.type === 'withholding-slip' || doc.type === 'withholding-statement' || doc.type === 'dividend-slip') &&
+            doc.detected_stream &&
+            statusUpper === 'COMPLETED') {
+            return baseType + (streamLabels[doc.detected_stream] || '');
+        }
+
+        return baseType;
+    }
+
+    // 檢查是否可以編輯收支方向
+    function canEditStream(doc) {
+        var statusUpper = (doc.status || '').toUpperCase();
+        return (doc.type === 'withholding-slip' || doc.type === 'withholding-statement' || doc.type === 'dividend-slip') &&
+            statusUpper === 'COMPLETED' &&
+            doc.detected_stream;
+    }
+
+    // 檢測重複檔案名稱
+    function findDuplicateFiles(docs) {
+        var fileNameCounts = {};
+        var duplicates = new Set();
+
+        // 計算每個檔案名稱的出現次數
+        docs.forEach(function (doc) {
+            var fileName = doc.name;
+            if (fileNameCounts[fileName]) {
+                fileNameCounts[fileName]++;
+            } else {
+                fileNameCounts[fileName] = 1;
+            }
+        });
+
+        // 找出重複的檔案名稱
+        Object.keys(fileNameCounts).forEach(function (fileName) {
+            if (fileNameCounts[fileName] > 1) {
+                docs.forEach(function (doc) {
+                    if (doc.name === fileName) {
+                        duplicates.add(doc.id);
+                    }
+                });
+            }
+        });
+
+        return duplicates;
+    }
+
+    // 更新 Job 的收支方向
+    function updateJobStream(jobId, newStream) {
+        showLoading();
+        $.ajax({
+            url: API_BASE_URL + '/jobs/' + jobId + '/stream',
+            method: 'PATCH',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                detected_stream: newStream
+            }),
+            success: function (response) {
+                hideLoading();
+                showNotification('已更新收支方向為「' + newStream + '」', 'success');
+
+                // 更新本地資料
+                var doc = documents.find(function (d) { return d.id === jobId; });
+                if (doc) {
+                    doc.detected_stream = newStream;
+                }
+
+                var job = allJobs.find(function (j) { return j.id === jobId; });
+                if (job) {
+                    job.detected_stream = newStream;
+                }
+
+                // 重新渲染
+                renderDocuments();
+            },
+            error: function (xhr, status, error) {
+                hideLoading();
+                console.error('更新收支方向失敗:', error);
+                var errorMsg = xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : '更新失敗，請稍後再試';
+                showNotification(errorMsg, 'danger');
+            }
+        });
+    }
+
+    // 顯示編輯收支方向的對話框
+    function showEditStreamDialog(jobId, currentStream) {
+        var newStream = currentStream === '支出' ? '收入' : '支出';
+        var message = '確定要將收支方向從「' + currentStream + '」改為「' + newStream + '」嗎？';
+
+        if (confirm(message)) {
+            updateJobStream(jobId, newStream);
+        }
+    }
+
+    function getFilteredDocs() {
+        var typeFilter = $('#filter-type').val();
+        var statusFilter = $('#filter-status').val();
+
+        return documents.filter(function (d) {
+            // 類型篩選（合併 document_type 和 detected_stream）
+            var matchType = true;
+            if (typeFilter !== 'all') {
+                if (typeFilter === 'all-income') {
+                    // 所有收入：小張收入 + 大張收入 + 股利憑單收入
+                    matchType = (d.type === 'withholding-slip' || d.type === 'withholding-statement' || d.type === 'dividend-slip') &&
+                        d.detected_stream === '收入';
+                } else if (typeFilter === 'all-expense') {
+                    // 所有支出：小張支出 + 大張支出 + 股利憑單支出
+                    matchType = (d.type === 'withholding-slip' || d.type === 'withholding-statement' || d.type === 'dividend-slip') &&
+                        d.detected_stream === '支出';
+                } else if (typeFilter === '401' || typeFilter === '403') {
+                    // 401/403 直接比對
+                    matchType = d.type === typeFilter;
+                } else {
+                    // 大張/小張需要比對 type 和 stream
+                    // 注意：withholding-slip-支出 會被分割成 ['withholding', 'slip', '支出']
+                    // 所以我們需要找到最後一個 '-' 的位置
+                    var lastDashIndex = typeFilter.lastIndexOf('-');
+                    var filterType = typeFilter.substring(0, lastDashIndex);  // 'withholding-slip'、'withholding-statement' 或 'dividend-slip'
+                    var filterStream = typeFilter.substring(lastDashIndex + 1); // '支出' 或 '收入'
+                    matchType = (d.type === filterType && d.detected_stream === filterStream);
+
+                    // Debug: 顯示篩選條件
+                    if (window.DEBUG_FILTER) {
+                        console.log('篩選條件:', {
+                            typeFilter: typeFilter,
+                            filterType: filterType,
+                            filterStream: filterStream,
+                            docType: d.type,
+                            docStream: d.detected_stream,
+                            match: matchType
+                        });
+                    }
+                }
+            }
+
+            // 狀態篩選（支援大小寫）
+            var statusUpper = (d.status || '').toUpperCase();
+            var matchStatus = statusFilter === 'all' ||
+                (statusFilter === 'completed' && statusUpper === 'COMPLETED') ||
+                (statusFilter === 'processing' && statusUpper === 'PROCESSING') ||
+                (statusFilter === 'error' && statusUpper === 'FAILED') ||
+                (statusFilter === 'pending' && (statusUpper === 'PENDING' || statusUpper === 'WAITING_CLASSIFICATION' || statusUpper === 'WAITING_CONFIRMATION'));
+
+            return matchType && matchStatus;
+        });
+    }
+
+    function renderDocuments() {
+        var filtered = getFilteredDocs();
+
+        // 按當前選擇的方式排序
+        filtered = sortDocuments(filtered);
+
+        // Update UI
+        updateSelectionUI();
+
+        if (filtered.length === 0) {
+            $('#documents-table').html(
+                '<tr><td colspan="6" class="text-center" style="padding: 60px 0;">' +
+                '<i class="fa fa-file-o" style="font-size: 48px; color: #ccc;"></i>' +
+                '<p class="text-muted" style="margin-top: 15px;">沒有符合篩選條件的檔案</p>' +
+                '</td></tr>'
+            );
+            return;
+        }
+
+        // 檢測重複檔案名稱
+        var duplicateFiles = findDuplicateFiles(filtered);
+
+        var html = '';
+        filtered.forEach(function (doc) {
+            // 找到對應的完整 Job 資料
+            var job = allJobs.find(function (j) { return j.id === doc.id; });
+            var canSelect = job ? isJobSelectable(job) : false;
+
+            var statusUpper = (doc.status || '').toUpperCase();
+            var statusClass = statusUpper === 'COMPLETED' ? 'success' :
+                statusUpper === 'PROCESSING' ? 'warning' :
+                    statusUpper === 'FAILED' ? 'danger' : 'default';
+            var statusLabel = statusUpper === 'COMPLETED' ? '辨識完成' :
+                statusUpper === 'PROCESSING' ? '辨識中' :
+                    statusUpper === 'FAILED' ? '辨識失敗' : '待辨識';
+            var isSelected = selectedDocs.includes(doc.id);
+
+            // 檢查是否可以編輯收支方向
+            var canEdit = canEditStream(doc);
+            var editButton = canEdit ?
+                '<button class="btn btn-default btn-xs stream-edit-btn" onclick="showEditStreamDialog(' + doc.id + ', \'' + doc.detected_stream + '\')" ' +
+                'title="切換收支方向" style="margin-left: 5px; padding: 2px 6px; font-size: 11px;">' +
+                '<i class="fa fa-exchange"></i>' +
+                '</button>' : '';
+
+            // 檔案名稱連結（已完成辨識的檔案都可點擊）
+            var fileNameHtml = '';
+            if (statusUpper === 'COMPLETED') {
+                // 所有已完成辨識的檔案都可以點擊進入校對頁面
+                fileNameHtml = '<i class="fa fa-file-text-o" style="margin-right: 8px; color: #3498db;"></i>' +
+                    '<a href="/verification?jobIds=' + doc.id + '&view_mode=single" ' +
+                    'style="color: #3498db; text-decoration: underline;" ' +
+                    'title="' + doc.name + '">' +  // 顯示完整檔案名稱
+                    doc.name +
+                    '</a>';
+            } else {
+                fileNameHtml = '<i class="fa fa-file-text-o" style="margin-right: 8px; color: #3498db;"></i>' +
+                    '<span title="' + doc.name + '">' + doc.name + '</span>';  // 顯示完整檔案名稱
+            }
+
+            html += '<tr>' +
+                '<td class="text-center">' +
+                '<input type="checkbox" class="doc-checkbox" data-id="' + doc.id + '" ' +
+                (isSelected ? 'checked' : '') + ' ' +
+                (canSelect ? '' : 'disabled') + '>' +
+                '</td>' +
+                '<td class="text-center" style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="' + doc.name + '">' +
+                fileNameHtml +
+                '</td>' +
+                '<td class="text-center">' +
+                '<div style="display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;">' +
+                '<span class="badge badge-default">' + getDocTypeDisplay(doc) + '</span>' +
+                editButton +
+                '</div>' +
+                '</td>' +
+                '<td class="text-center text-muted">' + doc.uploadedAt + '</td>' +
+                '<td class="text-center">' +
+                '<span class="badge badge-' + statusClass + '">' + statusLabel + '</span>' +
+                (duplicateFiles.has(doc.id) ?
+                    '<i class="fa fa-exclamation-triangle" style="color: #f39c12; margin-left: 8px; cursor: help;" ' +
+                    'title="該檔案重複上傳" data-toggle="tooltip" data-placement="top"></i>' : '') +
+                '</td>' +
+                '<td class="text-center">' +
+                '<div class="btn-group btn-group-xs" role="group">' +
+                '<button class="btn btn-info" onclick="showEditHistory(' + doc.id + ')" title="查看編輯軌跡" ' +
+                'style="padding: 3px 8px; font-size: 12px; border-radius: 3px 0 0 3px;">' +
+                '<i class="fa fa-history"></i>' +
+                '</button>' +
+                '<button class="btn btn-danger" onclick="deleteDoc(' + doc.id + ')" title="刪除檔案" ' +
+                'style="padding: 3px 8px; font-size: 12px; border-radius: 0 3px 3px 0;">' +
+                '<i class="fa fa-trash"></i>' +
+                '</button>' +
+                '</div>' +
+                '</td>' +
+                '</tr>';
+            
+            // 🆕 如果是失敗狀態，顯示錯誤訊息行
+            if (statusUpper === 'FAILED' && job && job.error_message) {
+                var errorInfo = parseErrorMessage(job.error_message);
+                // 使用 data 屬性來避免字串轉義問題
+                var errorDataId = 'error-data-' + doc.id;
+                html += '<tr class="error-row" style="background-color: #f2dede;">' +
+                    '<td></td>' +
+                    '<td colspan="5" style="padding: 10px 15px;">' +
+                    '<div style="display: flex; align-items: start; gap: 10px;">' +
+                    '<i class="fa fa-exclamation-circle" style="color: #a94442; font-size: 18px; margin-top: 2px; flex-shrink: 0;"></i>' +
+                    '<div style="flex: 1; min-width: 0; overflow: hidden;">' +
+                    '<div><strong style="color: #a94442;">錯誤類型：</strong> <span id="' + errorDataId + '-type">' + escapeHtml(errorInfo.error_type) + '</span></div>' +
+                    '<div style="margin-top: 4px;"><strong style="color: #a94442;">錯誤訊息：</strong></div>' +
+                    '<div class="error-message-text" id="' + errorDataId + '-msg" style="margin-top: 2px; padding: 8px; background: #fff; border: 1px solid #ebccd1; border-radius: 4px;">' + escapeHtml(errorInfo.error_message) + '</div>' +
+                    '<div style="margin-top: 8px;">' +
+                    '<button class="btn btn-xs btn-info" onclick="copyErrorMessageById(' + doc.id + ')">' +
+                    '<i class="fa fa-copy"></i> 複製錯誤訊息' +
+                    '</button>' +
+                    // 隱藏的 data 容器
+                    '<div id="' + errorDataId + '" style="display: none;" ' +
+                    'data-job-id="' + doc.id + '" ' +
+                    'data-file-name="' + escapeHtml(errorInfo.file_name) + '" ' +
+                    'data-error-type="' + escapeHtml(errorInfo.error_type) + '" ' +
+                    'data-error-message="' + escapeHtml(errorInfo.error_message) + '">' +
+                    '</div>' +
+                    '</div>' +
+                    '</div>' +
+                    '</div>' +
+                    '</td>' +
+                    '</tr>';
+            }
+        });
+
+        $('#documents-table').html(html);
+
+        // 初始化 tooltip
+        $('[data-toggle="tooltip"]').tooltip();
+
+        // Bind checkbox events
+        $('.doc-checkbox').change(function () {
+            var id = parseInt($(this).data('id'));
+            if ($(this).prop('checked')) {
+                if (!selectedDocs.includes(id)) {
+                    selectedDocs.push(id);
+                }
+            } else {
+                selectedDocs = selectedDocs.filter(function (docId) { return docId !== id; });
+            }
+            renderDocuments();
+        });
+    }
+
+    function deleteDoc(id, force) {
+        // 第一次呼叫時先顯示確認提示
+        if (!force) {
+            // 先詢問使用者是否確定要刪除
+            if (!confirm('確定要刪除這筆資料嗎？')) {
+                return;
+            }
+            
+            showLoading();
+            $.ajax({
+                url: API_BASE_URL + '/jobs/' + id,
+                method: 'DELETE',
+                success: function (response) {
+                    hideLoading();
+                    
+                    // 檢查是否有警告（檔案被版本使用）
+                    if (response.warning && response.versions) {
+                        var versionList = response.versions.map(function(v) {
+                            return v.file_name + ' (建立者：' + v.creator_name + ')';
+                        }).join('\n');
+                        
+                        var confirmMsg = '此檔案已建立過以下版本：\n' + versionList + '\n\n' +
+                                       '刪除後這些版本將無法重新開啟校對頁面。\n\n' +
+                                       '確定要繼續刪除嗎？';
+                        
+                        if (confirm(confirmMsg)) {
+                            // 使用者確認後，強制刪除
+                            deleteDoc(id, true);
+                        }
+                    } else if (response.ok) {
+                        // 沒有版本使用，直接刪除成功
+                        showNotification('已刪除檔案', 'success');
+                        selectedDocs = selectedDocs.filter(function (docId) { return docId !== id; });
+                        loadCaseJobs();
+                    }
+                },
+                error: function (xhr, status, error) {
+                    hideLoading();
+                    console.error('刪除失敗:', error);
+                    showNotification('刪除檔案失敗，請稍後再試', 'danger');
+                }
+            });
+        } else {
+            // 強制刪除
+            showLoading();
+            $.ajax({
+                url: API_BASE_URL + '/jobs/' + id + '?force=true',
+                method: 'DELETE',
+                success: function (response) {
+                    hideLoading();
+                    showNotification('已刪除檔案', 'success');
+                    selectedDocs = selectedDocs.filter(function (docId) { return docId !== id; });
+                    loadCaseJobs();
+                },
+                error: function (xhr, status, error) {
+                    hideLoading();
+                    console.error('刪除失敗:', error);
+                    showNotification('刪除檔案失敗，請稍後再試', 'danger');
+                }
+            });
+        }
+    }
+
+    // 顯示編輯軌跡
+    function showEditHistory(jobId) {
+        // 找到對應的 Job
+        var job = allJobs.find(function(j) { return j.id === jobId; });
+        if (!job) {
+            showNotification('找不到檔案資訊', 'danger');
+            return;
+        }
+
+        // 顯示 Modal
+        $('#editHistoryModal').modal('show');
+        $('#history-filename').text(job.original_filename);
+        $('#history-loading').show();
+        $('#history-content').hide();
+        $('#history-empty').hide();
+
+        // 載入編輯軌跡
+        $.ajax({
+            url: API_BASE_URL + '/jobs/' + jobId + '/logs',
+            method: 'GET',
+            success: function(logs) {
+                $('#history-loading').hide();
+                
+                if (logs.length === 0) {
+                    $('#history-empty').show();
+                    return;
+                }
+
+                // 渲染軌跡列表
+                var html = '';
+                logs.forEach(function(log) {
+                    var actionLabel = log.action_type === 'edit' ? '編輯資料' : 
+                                     log.action_type === 'delete' ? '刪除檔案' : '建立版本';
+                    var actionIcon = log.action_type === 'edit' ? 'fa-edit' : 
+                                    log.action_type === 'delete' ? 'fa-trash' : 'fa-file-archive-o';
+                    var actionClass = log.action_type === 'edit' ? 'text-primary' : 
+                                     log.action_type === 'delete' ? 'text-danger' : 'text-success';
+                    
+                    html += '<tr>' +
+                        '<td class="text-center">' + formatDateTime(log.created_at) + '</td>' +
+                        '<td class="text-center">' +
+                        '<strong>' + (log.user_name || 'N/A') + '</strong><br>' +
+                        '<small class="text-muted">' + (log.user_email || '') + '</small>' +
+                        '</td>' +
+                        '<td>' +
+                        '<i class="fa ' + actionIcon + ' ' + actionClass + '"></i> ' +
+                        '<strong>' + actionLabel + '</strong><br>' +
+                        '<small class="text-muted">' + (log.change_summary || '') + '</small>' +
+                        '</td>' +
+                        '</tr>';
+                });
+
+                $('#history-table-body').html(html);
+                $('#history-content').show();
+            },
+            error: function(xhr, status, error) {
+                $('#history-loading').hide();
+                console.error('載入編輯軌跡失敗:', error);
+                showNotification('載入編輯軌跡失敗', 'danger');
+                $('#editHistoryModal').modal('hide');
+            }
+        });
+    }
+
+    // 格式化日期時間（更詳細）
+    function formatDateTime(dateStr) {
+        if (!dateStr) return 'N/A';
+        var date = new Date(dateStr);
+        var year = date.getFullYear();
+        var month = String(date.getMonth() + 1).padStart(2, '0');
+        var day = String(date.getDate()).padStart(2, '0');
+        var hours = String(date.getHours()).padStart(2, '0');
+        var minutes = String(date.getMinutes()).padStart(2, '0');
+        var seconds = String(date.getSeconds()).padStart(2, '0');
+        return year + '-' + month + '-' + day + ' ' + hours + ':' + minutes + ':' + seconds;
+    }
+
+    // ============ 🆕 錯誤處理函數 ============
+
+    function escapeHtml(text) {
+        /**
+         * 轉義HTML特殊字元，防止XSS攻擊
+         */
+        if (!text) return '';
+        var map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
+
+    function parseErrorMessage(errorMessage) {
+        /**
+         * 解析錯誤訊息，支援新舊格式
+         */
+        if (!errorMessage) {
+            return {
+                file_name: 'Unknown',
+                error_type: 'Unknown',
+                error_message: '未知錯誤'
+            };
+        }
+
+        try {
+            // 嘗試解析新格式（JSON）
+            var errorInfo = JSON.parse(errorMessage);
+            return {
+                file_name: errorInfo.file_name || 'Unknown',
+                error_type: errorInfo.error_type || 'Unknown',
+                error_message: errorInfo.error_message || errorMessage
+            };
+        } catch (e) {
+            // 舊格式（純文字）
+            return {
+                file_name: 'Unknown',
+                error_type: 'ProcessingError',
+                error_message: errorMessage
+            };
+        }
+    }
+
+    function copyErrorMessageById(jobId) {
+        /**
+         * 從data屬性讀取錯誤訊息並複製到剪貼簿
+         */
+        console.log('🔍 開始複製錯誤訊息，Job ID:', jobId);
+        
+        var errorDataId = 'error-data-' + jobId;
+        var errorDataEl = document.getElementById(errorDataId);
+        
+        if (!errorDataEl) {
+            console.error('❌ 找不到錯誤資料元素:', errorDataId);
+            showNotification('無法找到錯誤資料', 'warning');
+            return;
+        }
+        
+        console.log('✅ 找到錯誤資料元素');
+        
+        var fileName = errorDataEl.getAttribute('data-file-name');
+        var errorType = errorDataEl.getAttribute('data-error-type');
+        var errorMessage = errorDataEl.getAttribute('data-error-message');
+        
+        console.log('📋 錯誤資料:', {
+            fileName: fileName,
+            errorType: errorType,
+            errorMessage: errorMessage ? errorMessage.substring(0, 50) + '...' : null
+        });
+        
+        var errorText = 'Tax-OCR 錯誤報告\n' +
+            'Job ID: ' + jobId + '\n' +
+            '檔案名稱: ' + fileName + '\n' +
+            '錯誤類型: ' + errorType + '\n' +
+            '錯誤訊息: ' + errorMessage + '\n' +
+            '時間: ' + new Date().toLocaleString();
+
+        console.log('📝 準備複製的文字長度:', errorText.length);
+
+        // 使用現代瀏覽器的 Clipboard API
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            console.log('✅ 使用 Clipboard API');
+            navigator.clipboard.writeText(errorText).then(function() {
+                console.log('✅ 複製成功');
+                showNotification('錯誤訊息已複製到剪貼簿', 'success');
+            }).catch(function(err) {
+                console.error('❌ Clipboard API 複製失敗:', err);
+                fallbackCopyTextToClipboard(errorText);
+            });
+        } else {
+            // 舊瀏覽器的 fallback 方法
+            console.log('⚠️ Clipboard API 不可用，使用 fallback 方法');
+            fallbackCopyTextToClipboard(errorText);
+        }
+    }
+
+    function copyErrorMessage(jobId, fileName, errorType, errorMessage) {
+        /**
+         * 複製錯誤訊息到剪貼簿（舊版本，保留以便相容）
+         */
+        var errorText = 'Tax-OCR 錯誤報告\n' +
+            'Job ID: ' + jobId + '\n' +
+            '檔案名稱: ' + fileName + '\n' +
+            '錯誤類型: ' + errorType + '\n' +
+            '錯誤訊息: ' + errorMessage + '\n' +
+            '時間: ' + new Date().toLocaleString();
+
+        // 使用現代瀏覽器的 Clipboard API
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(errorText).then(function() {
+                showNotification('錯誤訊息已複製到剪貼簿', 'success');
+            }).catch(function(err) {
+                console.error('複製失敗:', err);
+                fallbackCopyTextToClipboard(errorText);
+            });
+        } else {
+            // 舊瀏覽器的 fallback 方法
+            fallbackCopyTextToClipboard(errorText);
+        }
+    }
+
+    function fallbackCopyTextToClipboard(text) {
+        /**
+         * 舊瀏覽器的複製方法
+         */
+        console.log('🔄 使用 fallback 複製方法');
+        
+        var textArea = document.createElement("textarea");
+        textArea.value = text;
+        
+        // 避免在 iOS 上出現縮放
+        textArea.style.top = "0";
+        textArea.style.left = "0";
+        textArea.style.position = "fixed";
+
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+
+        try {
+            var successful = document.execCommand('copy');
+            console.log('📋 execCommand 結果:', successful);
+            
+            if (successful) {
+                showNotification('錯誤訊息已複製到剪貼簿', 'success');
+            } else {
+                showNotification('複製失敗，請手動複製', 'warning');
+            }
+        } catch (err) {
+            console.error('❌ Fallback 複製失敗:', err);
+            showNotification('複製失敗，請手動複製', 'warning');
+        }
+
+        document.body.removeChild(textArea);
+    }
+
+    // ============ 🆕 狀態自動輪詢功能 ============
+
+    var statusPollingInterval = null;
+    var isPollingActive = false;
+    var POLLING_INTERVAL_MS = 1000;  // 1 秒輪詢一次
+
+    /**
+     * 檢查是否有需要輪詢的檔案（辨識中或待辨識）
+     */
+    function hasActiveJobs() {
+        return documents.some(function(doc) {
+            var statusUpper = (doc.status || '').toUpperCase();
+            return statusUpper === 'PROCESSING' || statusUpper === 'PENDING' ||
+                   statusUpper === 'WAITING_CLASSIFICATION' || statusUpper === 'WAITING_CONFIRMATION';
+        });
+    }
+
+    /**
+     * 輕量級狀態更新：只更新狀態，不重新渲染整個表格
+     */
+    function pollJobStatuses() {
+        // 如果沒有需要更新的檔案，停止輪詢
+        if (!hasActiveJobs()) {
+            console.log('✅ 所有檔案處理完成，停止輪詢');
+            stopStatusPolling();
+            return;
+        }
+
+        // 發送請求取得最新狀態
+        $.ajax({
+            url: API_BASE_URL + '/cases/' + caseId + '/jobs',
+            method: 'GET',
+            success: function(jobs) {
+                var hasChanges = false;
+
+                jobs.forEach(function(job) {
+                    // 找到對應的本地資料
+                    var localDoc = documents.find(function(d) { return d.id === job.id; });
+                    var localJob = allJobs.find(function(j) { return j.id === job.id; });
+
+                    if (localDoc && localDoc.status !== job.status) {
+                        console.log('🔄 狀態變更:', job.original_filename, localDoc.status, '->', job.status);
+                        hasChanges = true;
+
+                        // 更新本地資料
+                        localDoc.status = job.status;
+                        localDoc.detected_stream = job.detected_stream;
+
+                        if (localJob) {
+                            localJob.status = job.status;
+                            localJob.detected_stream = job.detected_stream;
+                            localJob.error_message = job.error_message;
+                        }
+
+                        // 🆕 直接更新 DOM 中的狀態 badge（避免重新渲染整個表格）
+                        updateStatusBadgeInDOM(job.id, job.status, job.error_message);
+                    }
+                });
+
+                // 如果有變更，更新相關 UI（但不重新渲染表格）
+                if (hasChanges) {
+                    updateSelectionUI();
+                    updateSelectAllButtonState();
+                }
+
+                // 檢查是否還需要繼續輪詢
+                if (!hasActiveJobs()) {
+                    console.log('✅ 所有檔案處理完成，停止輪詢');
+                    stopStatusPolling();
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('❌ 狀態輪詢失敗:', error);
+                // 發生錯誤時不停止輪詢，下次會重試
+            }
+        });
+    }
+
+    /**
+     * 直接更新 DOM 中的狀態 badge，避免重新渲染整個表格
+     */
+    function updateStatusBadgeInDOM(jobId, newStatus, errorMessage) {
+        var statusUpper = (newStatus || '').toUpperCase();
+        var statusClass = statusUpper === 'COMPLETED' ? 'success' :
+            statusUpper === 'PROCESSING' ? 'warning' :
+            statusUpper === 'FAILED' ? 'danger' : 'default';
+        var statusLabel = statusUpper === 'COMPLETED' ? '辨識完成' :
+            statusUpper === 'PROCESSING' ? '辨識中' :
+            statusUpper === 'FAILED' ? '辨識失敗' : '待辨識';
+
+        // 找到該檔案的 checkbox 所在的 row
+        var $checkbox = $('.doc-checkbox[data-id="' + jobId + '"]');
+        if ($checkbox.length === 0) return;
+
+        var $row = $checkbox.closest('tr');
+
+        // 更新狀態欄位（第 5 個 td）
+        var $statusCell = $row.find('td').eq(4);
+
+        // 保留重複檔案警告圖示（如果有的話）
+        var $warningIcon = $statusCell.find('.fa-exclamation-triangle').clone();
+
+        // 更新狀態 badge
+        $statusCell.html('<span class="badge badge-' + statusClass + '">' + statusLabel + '</span>');
+
+        // 如果有警告圖示，加回去
+        if ($warningIcon.length > 0) {
+            $statusCell.append($warningIcon);
+        }
+
+        // 🆕 如果變成完成狀態，更新 checkbox 為可選
+        if (statusUpper === 'COMPLETED') {
+            $checkbox.prop('disabled', false);
+
+            // 更新檔案名稱為可點擊連結
+            var doc = documents.find(function(d) { return d.id === jobId; });
+            if (doc) {
+                var $nameCell = $row.find('td').eq(1);
+                var currentHtml = $nameCell.html();
+
+                // 如果還不是連結，轉換為連結
+                if (currentHtml.indexOf('<a ') === -1) {
+                    $nameCell.html(
+                        '<i class="fa fa-file-text-o" style="margin-right: 8px; color: #3498db;"></i>' +
+                        '<a href="/verification?jobIds=' + doc.id + '&view_mode=single" ' +
+                        'style="color: #3498db; text-decoration: underline;" ' +
+                        'title="' + doc.name + '">' + doc.name + '</a>'
+                    );
+                }
+            }
+        }
+
+        // 🆕 如果變成失敗狀態，顯示錯誤訊息行
+        if (statusUpper === 'FAILED' && errorMessage) {
+            // 檢查是否已經有錯誤行
+            var $nextRow = $row.next('tr.error-row');
+            if ($nextRow.length === 0) {
+                // 沒有錯誤行，需要新增
+                var errorInfo = parseErrorMessage(errorMessage);
+                var errorDataId = 'error-data-' + jobId;
+                var errorRowHtml = '<tr class="error-row" style="background-color: #f2dede;">' +
+                    '<td></td>' +
+                    '<td colspan="5" style="padding: 10px 15px;">' +
+                    '<div style="display: flex; align-items: start; gap: 10px;">' +
+                    '<i class="fa fa-exclamation-circle" style="color: #a94442; font-size: 18px; margin-top: 2px; flex-shrink: 0;"></i>' +
+                    '<div style="flex: 1; min-width: 0; overflow: hidden;">' +
+                    '<div><strong style="color: #a94442;">錯誤類型：</strong> <span>' + escapeHtml(errorInfo.error_type) + '</span></div>' +
+                    '<div style="margin-top: 4px;"><strong style="color: #a94442;">錯誤訊息：</strong></div>' +
+                    '<div class="error-message-text" style="margin-top: 2px; padding: 8px; background: #fff; border: 1px solid #ebccd1; border-radius: 4px;">' + escapeHtml(errorInfo.error_message) + '</div>' +
+                    '<div style="margin-top: 8px;">' +
+                    '<button class="btn btn-xs btn-info" onclick="copyErrorMessageById(' + jobId + ')">' +
+                    '<i class="fa fa-copy"></i> 複製錯誤訊息' +
+                    '</button>' +
+                    '<div id="' + errorDataId + '" style="display: none;" ' +
+                    'data-job-id="' + jobId + '" ' +
+                    'data-file-name="' + escapeHtml(errorInfo.file_name) + '" ' +
+                    'data-error-type="' + escapeHtml(errorInfo.error_type) + '" ' +
+                    'data-error-message="' + escapeHtml(errorInfo.error_message) + '">' +
+                    '</div>' +
+                    '</div>' +
+                    '</div>' +
+                    '</div>' +
+                    '</td>' +
+                    '</tr>';
+
+                $row.after(errorRowHtml);
+            }
+        }
+    }
+
+    /**
+     * 啟動狀態輪詢
+     */
+    function startStatusPolling() {
+        if (isPollingActive) return;
+
+        // 檢查是否有需要輪詢的檔案
+        if (!hasActiveJobs()) {
+            console.log('💤 沒有需要輪詢的檔案');
+            return;
+        }
+
+        console.log('🚀 啟動狀態輪詢（每 ' + (POLLING_INTERVAL_MS / 1000) + ' 秒）');
+        isPollingActive = true;
+
+        statusPollingInterval = setInterval(pollJobStatuses, POLLING_INTERVAL_MS);
+    }
+
+    /**
+     * 停止狀態輪詢
+     */
+    function stopStatusPolling() {
+        if (!isPollingActive) return;
+
+        console.log('⏹️ 停止狀態輪詢');
+        isPollingActive = false;
+
+        if (statusPollingInterval) {
+            clearInterval(statusPollingInterval);
+            statusPollingInterval = null;
+        }
+    }
+
+    // 頁面離開時停止輪詢
+    $(window).on('beforeunload', function() {
+        stopStatusPolling();
+    });
+</script>
+{% endblock %}
