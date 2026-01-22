@@ -1,1 +1,5 @@
 pdfplumber>=0.10.0
+pdf2image
+paddlepaddle
+paddleocr
+opencv-python-headless
