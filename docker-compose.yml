@@ -13,7 +13,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-taxai_password}
       POSTGRES_DB: ${DB_NAME:-taxai}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
@@ -29,7 +29,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - ./data/redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -118,6 +118,3 @@ services:
       - celery_worker
     restart: unless-stopped
 
-volumes:
-  postgres_data:
-  redis_data:
