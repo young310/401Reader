@@ -9,6 +9,12 @@
     </div>
     <div class="nav-right">
         {% if current_user.is_authenticated %}
+        <!-- Support Button -->
+        <a href="/support/" class="nav-btn support-btn" title="問題回報">
+            <i class="fa fa-life-ring"></i>
+            <span class="btn-text">問題回報</span>
+        </a>
+
         <div class="user-dropdown">
             <a href="#" class="user-profile dropdown-toggle" data-toggle="dropdown">
                 <i class="fa fa-user-circle"></i>
@@ -131,6 +137,52 @@
 
 .dropdown-menu li a .fa {
     margin-right: 8px;
+}
+
+/* Support Button */
+.nav-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    margin-right: 12px;
+    color: #555;
+    text-decoration: none;
+    border-radius: 6px;
+    transition: all 0.2s;
+    font-size: 14px;
+}
+
+.nav-btn:hover {
+    text-decoration: none;
+    color: #333;
+    background: #f0f0f0;
+}
+
+.support-btn {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+}
+
+.support-btn:hover {
+    background: #e8f4fd;
+    border-color: #b8daff;
+    color: #0066cc;
+}
+
+.support-btn .fa {
+    font-size: 16px;
+    color: #0066cc;
+}
+
+@media (max-width: 768px) {
+    .nav-btn .btn-text {
+        display: none;
+    }
+    .nav-btn {
+        padding: 8px 10px;
+        margin-right: 8px;
+    }
 }
 </style>
 

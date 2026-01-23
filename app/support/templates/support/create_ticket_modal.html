@@ -1,0 +1,356 @@
+<!-- Create Support Ticket Modal -->
+<div class="modal fade" id="createTicketModal" tabindex="-1" role="dialog" aria-labelledby="createTicketModalLabel">
+  <div class="modal-dialog modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+        <h4 class="modal-title" id="createTicketModalLabel">
+          <i class="fa fa-life-ring"></i> 建立技術支援工單
+        </h4>
+        <div class="modal-header-actions" style="position: absolute; right: 50px; top: 15px;">
+          <a href="/support/tickets" class="btn btn-sm btn-info" title="查看我的工單">
+            <i class="fa fa-list"></i> 我的工單
+          </a>
+        </div>
+      </div>
+      <div class="modal-body">
+        <form id="createTicketForm" enctype="multipart/form-data">
+          <!-- User Email (Auto-filled, read-only) -->
+          <div class="form-group">
+            <label for="user_email">您的 Email <span class="text-danger">*</span></label>
+            <input type="email" class="form-control" id="user_email" name="user_email" value="{{ current_user.email }}"
+              readonly>
+          </div>
+
+          <!-- Subject -->
+          <div class="form-group">
+            <label for="subject">主旨 <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="subject" name="subject" required
+              placeholder="例如：發票編號 INV-2024-001 無法上傳" maxlength="500">
+            <small class="form-text text-muted">請簡短描述您遇到的問題</small>
+          </div>
+
+          <!-- Category -->
+          <div class="form-group">
+            <label for="category">問題類型 <span class="text-danger">*</span></label>
+            <select class="form-control" id="category" name="category" required>
+              <option value="system_error">系統錯誤</option>
+              <option value="feature_request">功能請求</option>
+              <option value="data_issue">資料問題</option>
+              <option value="other">其他</option>
+            </select>
+          </div>
+
+          <!-- Priority -->
+          <div class="form-group">
+            <label for="priority">優先級 <span class="text-danger">*</span></label>
+            <select class="form-control" id="priority" name="priority" required>
+              <option value="low">低 - 不影響使用</option>
+              <option value="medium" selected>中 - 部分功能受影響</option>
+              <option value="high">高 - 重要功能無法使用</option>
+              <option value="urgent">緊急 - 系統無法使用</option>
+            </select>
+          </div>
+
+          <!-- Description -->
+          <div class="form-group">
+            <label for="description">詳細描述 <span class="text-danger">*</span></label>
+            <textarea class="form-control" id="description" name="description" rows="8" required
+              placeholder="請詳細描述問題：&#10;1. 問題發生的頁面/功能&#10;2. 相關的ID或編號（例如：發票號碼、PO號碼等）&#10;3. 重現步驟（如何操作會出現問題）&#10;4. 預期結果與實際結果"></textarea>
+            <small class="form-text text-muted">
+              <strong>提示：</strong>請盡可能提供詳細資訊，包括錯誤訊息、相關編號等，這將有助於我們快速解決問題。
+            </small>
+          </div>
+
+          <!-- Attachments -->
+          <div class="form-group">
+            <label for="attachments">附件 (截圖或相關文件)</label>
+            <div class="dropzone" id="ticketDropzone">
+              <div class="dz-message">
+                <i class="fa fa-cloud-upload" style="font-size: 48px; color: #999;"></i>
+                <p>拖曳檔案到此處或點擊上傳</p>
+                <p class="small text-muted">支援格式：PNG, JPG, GIF, PDF (最大 10MB)</p>
+              </div>
+            </div>
+            <input type="file" id="attachments" name="attachments" multiple accept=".png,.jpg,.jpeg,.gif,.pdf"
+              style="display: none;">
+          </div>
+
+          <!-- Preview uploaded files -->
+          <div id="filePreview" class="mt-3" style="display: none;">
+            <label>已選擇的檔案：</label>
+            <ul id="fileList" class="list-unstyled"></ul>
+          </div>
+
+          <!-- Error message area -->
+          <div id="ticketError" class="alert alert-danger" style="display: none;"></div>
+
+          <!-- Success message area -->
+          <div id="ticketSuccess" class="alert alert-success" style="display: none;"></div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="submitTicketBtn">
+          <i class="fa fa-paper-plane"></i> 提交工單
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .dropzone {
+    border: 2px dashed #ccc;
+    border-radius: 5px;
+    padding: 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background-color: #fafafa;
+  }
+
+  .dropzone:hover {
+    border-color: #007bff;
+    background-color: #f0f8ff;
+  }
+
+  .dropzone.dragover {
+    border-color: #007bff;
+    background-color: #e7f3ff;
+  }
+
+  #fileList li {
+    padding: 5px 10px;
+    margin: 5px 0;
+    background-color: #f8f9fa;
+    border-left: 3px solid #007bff;
+    border-radius: 3px;
+  }
+
+  #fileList li i {
+    color: #007bff;
+    margin-right: 5px;
+  }
+
+  /* Modal header actions styling */
+  .modal-header {
+    position: relative;
+  }
+
+  .modal-header-actions {
+    position: absolute;
+    right: 50px;
+    top: 15px;
+    z-index: 1;
+  }
+
+  /* Responsive adjustments */
+  @media (max-width: 768px) {
+    .modal-header-actions {
+      position: static;
+      margin-top: 10px;
+      text-align: right;
+    }
+
+    .modal-title {
+      margin-bottom: 10px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .modal-header-actions .btn {
+      font-size: 12px;
+      padding: 4px 8px;
+    }
+
+    .modal-header-actions .btn i {
+      margin-right: 3px;
+    }
+  }
+</style>
+
+<script>
+  // Support Ticket Modal JavaScript
+  $(document).ready(function () {
+    const dropzone = $('#ticketDropzone');
+    const fileInput = $('#attachments');
+    const filePreview = $('#filePreview');
+    const fileList = $('#fileList');
+    const submitBtn = $('#submitTicketBtn');
+    const form = $('#createTicketForm');
+
+    // Click to upload
+    dropzone.on('click', function () {
+      fileInput.click();
+    });
+
+    // Drag and drop handlers
+    dropzone.on('dragover', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      $(this).addClass('dragover');
+    });
+
+    dropzone.on('dragleave', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      $(this).removeClass('dragover');
+    });
+
+    dropzone.on('drop', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      $(this).removeClass('dragover');
+
+      const files = e.originalEvent.dataTransfer.files;
+      fileInput[0].files = files;
+      displayFiles(files);
+    });
+
+    // File input change
+    fileInput.on('change', function () {
+      displayFiles(this.files);
+    });
+
+    // Display selected files
+    function displayFiles(files) {
+      fileList.empty();
+
+      if (files.length > 0) {
+        filePreview.show();
+        Array.from(files).forEach(file => {
+          const fileSize = (file.size / 1024 / 1024).toFixed(2);
+          const fileSizeText = fileSize + ' MB';
+          const icon = getFileIcon(file.name);
+
+          fileList.append(`
+          <li>
+            <i class="fa ${icon}"></i>
+            <strong>${file.name}</strong> (${fileSizeText})
+          </li>
+        `);
+        });
+      } else {
+        filePreview.hide();
+      }
+    }
+
+    // Get file icon based on extension
+    function getFileIcon(filename) {
+      const ext = filename.split('.').pop().toLowerCase();
+      const iconMap = {
+        'pdf': 'fa-file-pdf-o',
+        'png': 'fa-file-image-o',
+        'jpg': 'fa-file-image-o',
+        'jpeg': 'fa-file-image-o',
+        'gif': 'fa-file-image-o'
+      };
+      return iconMap[ext] || 'fa-file-o';
+    }
+
+    // Submit ticket (use .off().on() to prevent duplicate event binding)
+    submitBtn.off('click').on('click', function () {
+      const subject = $('#subject').val().trim();
+      const description = $('#description').val().trim();
+      const category = $('#category').val();
+      const priority = $('#priority').val();
+
+      // Validation
+      if (!subject || !description) {
+        showError('請填寫所有必填欄位');
+        return;
+      }
+
+      // Check if already submitting
+      if (submitBtn.prop('disabled')) {
+        return;
+      }
+
+      // Disable submit button
+      submitBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> 提交中...');
+      hideMessages();
+
+      // Prepare form data
+      const formData = new FormData();
+      formData.append('subject', subject);
+      formData.append('description', description);
+      formData.append('category', category);
+      formData.append('priority', priority);
+
+      // Add files
+      const files = fileInput[0].files;
+      for (let i = 0; i < files.length; i++) {
+        formData.append('attachments', files[i]);
+      }
+
+      // Submit via AJAX
+      $.ajax({
+        url: '/support/api/ticket/create',
+        type: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function (response) {
+          if (response.success) {
+            showSuccess(`工單建立成功！工單編號：${response.ticket_number}`);
+
+            // Reset form after 2 seconds and close modal
+            setTimeout(function () {
+              form[0].reset();
+              fileList.empty();
+              filePreview.hide();
+              $('#createTicketModal').modal('hide');
+              hideMessages();
+
+              // Refresh ticket count
+              if (typeof fetchTicketCount === 'function') {
+                fetchTicketCount();
+              }
+
+              // Redirect to ticket list
+              window.location.href = '/support/tickets';
+            }, 2000);
+          } else {
+            showError(response.message || '建立工單失敗');
+          }
+        },
+        error: function (xhr) {
+          const errorMsg = xhr.responseJSON && xhr.responseJSON.message
+            ? xhr.responseJSON.message
+            : '建立工單時發生錯誤，請稍後再試';
+          showError(errorMsg);
+        },
+        complete: function () {
+          submitBtn.prop('disabled', false).html('<i class="fa fa-paper-plane"></i> 提交工單');
+        }
+      });
+    });
+
+    // Show/hide messages
+    function showError(message) {
+      $('#ticketError').text(message).fadeIn();
+      $('#ticketSuccess').hide();
+    }
+
+    function showSuccess(message) {
+      $('#ticketSuccess').text(message).fadeIn();
+      $('#ticketError').hide();
+    }
+
+    function hideMessages() {
+      $('#ticketError').hide();
+      $('#ticketSuccess').hide();
+    }
+
+    // Reset form when modal is closed
+    $('#createTicketModal').on('hidden.bs.modal', function () {
+      form[0].reset();
+      fileList.empty();
+      filePreview.hide();
+      hideMessages();
+    });
+  });
+</script>

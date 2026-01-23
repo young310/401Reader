@@ -1,0 +1,519 @@
+{% extends "base.html" %}
+
+{% block title %}工單詳情 - {{ ticket.ticket_number }}{% endblock %}
+
+{% block content %}
+<div class="right_col" role="main" style="margin-top: -30px;">
+  <div class="">
+    <div class="page-title">
+      <div class="title_left">
+        <h3>工單詳情 - {{ ticket.ticket_number }}</h3>
+      </div>
+      <div class="title_right">
+        <a href="{{ url_for('support.ticket_list') }}" class="btn btn-default">
+          <i class="fa fa-arrow-left"></i> 返回列表
+        </a>
+      </div>
+    </div>
+
+    <div class="clearfix"></div>
+
+    <div class="row">
+      <!-- Ticket Info -->
+      <div class="col-md-8">
+        <div class="x_panel">
+          <div class="x_title">
+            <h2>{{ ticket.subject }}</h2>
+            <div class="clearfix"></div>
+          </div>
+          <div class="x_content">
+            <div class="row">
+              <div class="col-md-6">
+                <p><strong>工單編號：</strong>{{ ticket.ticket_number }}</p>
+                <p><strong>建立者：</strong>{{ ticket.user_email }}</p>
+                <p><strong>建立時間：</strong><span class="local-time" data-utc="{{ ticket.created_at.isoformat() }}Z">{{ ticket.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</span></p>
+                {% if ticket.project_pm %}
+                <p><strong>專案負責人：</strong>
+                  {% for user in support_users %}
+                  {% if user.id == ticket.project_pm %}{{ user.email }}{% endif %}
+                  {% endfor %}
+                </p>
+                {% endif %}
+              </div>
+              <div class="col-md-6">
+                <p><strong>類型：</strong>
+                  {% if ticket.category == 'system_error' %}系統錯誤
+                  {% elif ticket.category == 'feature_request' %}功能請求
+                  {% elif ticket.category == 'data_issue' %}資料問題
+                  {% else %}其他{% endif %}
+                </p>
+                <p><strong>優先級：</strong>
+                  <span class="badge {% if ticket.priority == 'urgent' %}badge-dark
+                    {% elif ticket.priority == 'high' %}badge-danger
+                    {% elif ticket.priority == 'medium' %}badge-warning
+                    {% else %}badge-info{% endif %}">
+                    {% if ticket.priority == 'urgent' %}緊急
+                    {% elif ticket.priority == 'high' %}高
+                    {% elif ticket.priority == 'medium' %}中
+                    {% else %}低{% endif %}
+                  </span>
+                </p>
+                <p><strong>狀態：</strong>
+                  <span class="badge {% if ticket.status == 'new' %}badge-primary
+                    {% elif ticket.status == 'in_progress' %}badge-warning
+                    {% elif ticket.status == 'resolved' %}badge-success
+                    {% else %}badge-secondary{% endif %}" id="ticketStatus">
+                    {% if ticket.status == 'new' %}新建
+                    {% elif ticket.status == 'in_progress' %}處理中
+                    {% elif ticket.status == 'resolved' %}已解決
+                    {% else %}已關閉{% endif %}
+                  </span>
+                </p>
+              </div>
+            </div>
+            <hr>
+            <h4>問題描述：</h4>
+            <div class="well">{{ ticket.description | replace('\n', '<br>') | safe }}</div>
+
+            {% if attachments %}
+            <h4>附件：</h4>
+            <div class="attachment-list">
+              {% for attachment in attachments %}
+              <div class="attachment-item">
+                <div class="attachment-info">
+                  <i class="fa fa-file text-primary"></i>
+                  <span class="attachment-name">{{ attachment.file_name }}</span>
+                  <span class="text-muted">({{ (attachment.file_size / 1024 / 1024) | round(2) }} MB)</span>
+                </div>
+                <div class="attachment-actions">
+                  <a href="{{ url_for('support.view_attachment', attachment_id=attachment.id) }}" target="_blank"
+                    class="btn btn-sm btn-outline-primary" title="在新視窗中查看">
+                    <i class="fa fa-eye"></i> 查看
+                  </a>
+                  <a href="{{ url_for('support.download_attachment', attachment_id=attachment.id) }}"
+                    class="btn btn-sm btn-outline-secondary" title="下載檔案">
+                    <i class="fa fa-download"></i> 下載
+                  </a>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Comments -->
+        <div class="x_panel">
+          <div class="x_title">
+            <h2><i class="fa fa-comments"></i> 回覆記錄</h2>
+            <div class="clearfix"></div>
+          </div>
+          <div class="x_content">
+            {% if comments %}
+            {% for comment in comments %}
+            {% if not comment.is_internal or can_modify %}
+            <div class="comment-item"
+              style="margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-left: 3px solid {% if comment.is_internal %}#ffc107{% else %}#007bff{% endif %};">
+              <div class="comment-header">
+                <strong>{{ comment.author_name }}</strong>
+                <span class="text-muted local-time" data-utc="{{ comment.created_at.isoformat() }}Z">{{ comment.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+                {% if comment.is_internal %}
+                <span class="badge badge-warning">內部備註</span>
+                {% endif %}
+              </div>
+              <div class="comment-content" style="margin-top: 10px;">
+                {{ comment.content | replace('\n', '<br>') | safe }}
+              </div>
+
+              <!-- Comment Attachments -->
+              {% set comment_attachments = comment.attachments.all() %}
+              {% if comment_attachments %}
+              <div class="comment-attachments" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd;">
+                <small class="text-muted"><i class="fa fa-paperclip"></i> 附件：</small>
+                <div class="comment-attachment-list" style="margin-top: 5px;">
+                  {% for attachment in comment_attachments %}
+                  <div class="comment-attachment-item">
+                    <div class="attachment-info">
+                      <i class="fa fa-file text-primary"></i>
+                      <span class="attachment-name">{{ attachment.file_name }}</span>
+                      <span class="text-muted">({{ (attachment.file_size / 1024 / 1024) | round(2) }} MB)</span>
+                    </div>
+                    <div class="attachment-actions">
+                      <a href="{{ url_for('support.view_attachment', attachment_id=attachment.id) }}" target="_blank"
+                        class="btn btn-xs btn-outline-primary" title="在新視窗中查看">
+                        <i class="fa fa-eye"></i> 查看
+                      </a>
+                      <a href="{{ url_for('support.download_attachment', attachment_id=attachment.id) }}"
+                        class="btn btn-xs btn-outline-secondary" title="下載檔案">
+                        <i class="fa fa-download"></i> 下載
+                      </a>
+                    </div>
+                  </div>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endif %}
+            </div>
+            {% endif %}
+            {% endfor %}
+            {% else %}
+            <p class="text-muted">暫無回覆</p>
+            {% endif %}
+
+            <!-- Add Comment Form -->
+            <hr>
+            <h4>新增回覆：</h4>
+            <form id="addCommentForm" enctype="multipart/form-data">
+              <div class="form-group">
+                <textarea class="form-control" id="commentContent" rows="4" placeholder="請輸入您的回覆..."></textarea>
+              </div>
+
+              <!-- File Upload Section -->
+              <div class="form-group">
+                <label for="commentAttachments">附件 (可選)</label>
+                <input type="file" class="form-control-file" id="commentAttachments" name="attachments" multiple
+                  accept=".png,.jpg,.jpeg,.gif,.pdf" style="margin-bottom: 10px;">
+                <small class="form-text text-muted">
+                  支援格式：PNG, JPG, JPEG, GIF, PDF。單檔最大 10MB。
+                </small>
+                <div id="selectedFiles" style="margin-top: 10px;"></div>
+              </div>
+
+              {% if can_modify %}
+              <div class="form-group">
+                <label>
+                  <input type="checkbox" id="isInternal"> 內部備註（不會發送郵件給使用者）
+                </label>
+              </div>
+              {% endif %}
+              <button type="button" class="btn btn-primary" id="submitCommentBtn">
+                <i class="fa fa-paper-plane"></i> 送出回覆
+              </button>
+            </form>
+            <div id="commentAlert" class="alert" style="display: none; margin-top: 10px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="col-md-4">
+        {% if can_modify %}
+        <div class="x_panel">
+          <div class="x_title">
+            <h2>工單管理</h2>
+            <div class="clearfix"></div>
+          </div>
+          <div class="x_content">
+            <form id="updateTicketForm">
+              <div class="form-group">
+                <label>狀態</label>
+                <select class="form-control" id="updateStatus" name="status">
+                  <option value="new" {% if ticket.status=='new' %}selected{% endif %}>新建</option>
+                  <option value="in_progress" {% if ticket.status=='in_progress' %}selected{% endif %}>處理中</option>
+                  <option value="resolved" {% if ticket.status=='resolved' %}selected{% endif %}>已解決</option>
+                  <option value="closed" {% if ticket.status=='closed' %}selected{% endif %}>已關閉</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>優先級</label>
+                <select class="form-control" id="updatePriority" name="priority">
+                  <option value="low" {% if ticket.priority=='low' %}selected{% endif %}>低</option>
+                  <option value="medium" {% if ticket.priority=='medium' %}selected{% endif %}>中</option>
+                  <option value="high" {% if ticket.priority=='high' %}selected{% endif %}>高</option>
+                  <option value="urgent" {% if ticket.priority=='urgent' %}selected{% endif %}>緊急</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>提交 Deloitte</label>
+                <select class="form-control" id="updatePm" name="project_pm">
+                  <option value="">選擇 Deloitte 專案負責窗口</option>
+                  <option value="159" {% if ticket.project_pm==159 %}selected{% endif %}>Will C. Ho;
+                    willho@deloitte.com.tw</option>
+                  <option value="205" {% if ticket.project_pm==205 %}selected{% endif %}>Murreen C. Chuang;
+                    murchuang@deloitte.com.tw</option>
+                  <option value="7473" {% if ticket.project_pm==7473 %}selected{% endif %}>Winnie T. Huang;
+                    winniethuang@deloitte.com.tw</option>
+                  <option value="166" {% if ticket.project_pm==166 %}selected{% endif %}>Sienna C. Huang;
+                    siehuang@deloitte.com.tw</option>
+                  <option value="7517" {% if ticket.project_pm==7517 %}selected{% endif %}>Kana H. Hosokawa;
+                    kanahosokawa@deloitte.com.tw</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>指派給</label>
+                <select class="form-control" id="updateAssigned" name="assigned_to">
+                  <option value="">未指派</option>
+                  <option value="134" {% if ticket.assigned_to==134 %}selected{% endif %}>Elvis T. Yang;
+                    elvyang@deloitte.com.tw</option>
+                  <option value="139" {% if ticket.assigned_to==139 %}selected{% endif %}>Tricia H. Huang;
+                    trihaung@deloitte.com.tw</option>
+                  <option value="124" {% if ticket.assigned_to==124 %}selected{% endif %}>Kevin T. Hsieh;
+                    kehsieh@deloitte.com.tw</option>
+                  <option value="167" {% if ticket.assigned_to==167 %}selected{% endif %}>Emily Y. Jian;
+                    ejian@deloitte.com.tw</option>
+                  <option value="7509" {% if ticket.assigned_to==7509 %}selected{% endif %}>Ken C. Chu;
+                    kechu@deloitte.com.tw</option>
+                </select>
+              </div>
+              <button type="button" class="btn btn-success btn-block" id="updateTicketBtn">
+                <i class="fa fa-save"></i> 更新工單
+              </button>
+            </form>
+            <div id="updateAlert" class="alert" style="display: none; margin-top: 10px;"></div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  /* 附件列表樣式 */
+  .attachment-list {
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    background: #f9f9f9;
+  }
+
+  .attachment-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 15px;
+    border-bottom: 1px solid #e0e0e0;
+  }
+
+  .attachment-item:last-child {
+    border-bottom: none;
+  }
+
+  .attachment-info {
+    display: flex;
+    align-items: center;
+    flex: 1;
+  }
+
+  .attachment-info i {
+    margin-right: 8px;
+    font-size: 16px;
+  }
+
+  .attachment-name {
+    margin-right: 8px;
+    font-weight: 500;
+    color: #333;
+  }
+
+  .attachment-actions {
+    display: flex;
+    gap: 8px;
+    white-space: nowrap;
+  }
+
+  .attachment-actions .btn {
+    font-size: 12px;
+    padding: 4px 8px;
+  }
+
+  /* 回覆中的附件樣式 */
+  .comment-attachment-list {
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 3px;
+    padding: 5px;
+  }
+
+  .comment-attachment-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 8px;
+    margin-bottom: 4px;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 3px;
+  }
+
+  .comment-attachment-item:last-child {
+    margin-bottom: 0;
+  }
+
+  .comment-attachment-item .attachment-info {
+    font-size: 13px;
+  }
+
+  .comment-attachment-item .attachment-info i {
+    font-size: 13px;
+    margin-right: 6px;
+  }
+
+  .comment-attachment-item .attachment-name {
+    font-weight: normal;
+  }
+
+  .comment-attachment-item .attachment-actions .btn {
+    font-size: 11px;
+    padding: 2px 6px;
+  }
+
+  /* 響應式設計 */
+  @media (max-width: 768px) {
+
+    .attachment-item,
+    .comment-attachment-item {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .attachment-actions {
+      margin-top: 8px;
+      width: 100%;
+      justify-content: flex-start;
+    }
+  }
+</style>
+
+<script>
+  $(document).ready(function () {
+    const ticketId = {{ ticket.id | tojson }};
+
+    // Convert UTC times to local timezone
+    convertToLocalTime();
+
+    update_office_dropdown('office', 'OfficeAddress', null, '{{ current_user.locale }}');
+
+  // File selection display
+  $('#commentAttachments').on('change', function () {
+    const files = this.files;
+    const selectedFilesDiv = $('#selectedFiles');
+    selectedFilesDiv.empty();
+
+    if (files.length > 0) {
+      selectedFilesDiv.append('<strong>已選擇的檔案：</strong><br>');
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fileSize = (file.size / 1024 / 1024).toFixed(2);
+        selectedFilesDiv.append(`
+          <div class="selected-file" style="margin: 5px 0; padding: 5px; background: #f8f9fa; border-radius: 3px;">
+            <i class="fa fa-file"></i> ${file.name} (${fileSize} MB)
+          </div>
+        `);
+      }
+    }
+  });
+
+  // Add comment with file upload
+  $('#submitCommentBtn').on('click', function () {
+    const content = $('#commentContent').val().trim();
+    const isInternal = $('#isInternal').is(':checked');
+    const files = $('#commentAttachments')[0].files;
+
+    if (!content && files.length === 0) {
+      showAlert('commentAlert', 'danger', '請輸入回覆內容或選擇附件');
+      return;
+    }
+
+    $(this).prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> 送出中...');
+
+    // Create FormData for file upload
+    const formData = new FormData();
+    formData.append('content', content);
+    formData.append('is_internal', isInternal);
+
+    // Add files to FormData
+    for (let i = 0; i < files.length; i++) {
+      formData.append('attachments', files[i]);
+    }
+
+    $.ajax({
+      url: `/support/api/ticket/${ticketId}/comment`,
+      type: 'POST',
+      data: formData,
+      processData: false,
+      contentType: false,
+      success: function (response) {
+        if (response.success) {
+          showAlert('commentAlert', 'success', '回覆已送出');
+          setTimeout(function () {
+            location.reload();
+          }, 1000);
+        } else {
+          showAlert('commentAlert', 'danger', response.message);
+        }
+      },
+      error: function () {
+        showAlert('commentAlert', 'danger', '送出失敗，請稍後再試');
+      },
+      complete: function () {
+        $('#submitCommentBtn').prop('disabled', false).html('<i class="fa fa-paper-plane"></i> 送出回覆');
+      }
+    });
+  });
+
+  // Update ticket
+  $('#updateTicketBtn').on('click', function () {
+    const data = {
+      status: $('#updateStatus').val(),
+      priority: $('#updatePriority').val(),
+      assigned_to: $('#updateAssigned').val(),
+      project_pm: $('#updatePm').val()
+    };
+
+    $(this).prop('disabled', true);
+
+    $.ajax({
+      url: `/support/api/ticket/${ticketId}/update`,
+      type: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify(data),
+      success: function (response) {
+        if (response.success) {
+          showAlert('updateAlert', 'success', '工單已更新');
+          setTimeout(function () {
+            location.reload();
+          }, 1000);
+        } else {
+          showAlert('updateAlert', 'danger', response.message);
+        }
+      },
+      error: function () {
+        showAlert('updateAlert', 'danger', '更新失敗，請稍後再試');
+      },
+      complete: function () {
+        $('#updateTicketBtn').prop('disabled', false);
+      }
+    });
+  });
+
+  function showAlert(elementId, type, message) {
+    const alert = $('#' + elementId);
+    alert.removeClass('alert-success alert-danger alert-warning alert-info')
+      .addClass('alert-' + type)
+      .text(message)
+      .fadeIn();
+  }
+
+  function convertToLocalTime() {
+    $('.local-time').each(function() {
+      const utcTime = $(this).data('utc');
+      if (utcTime) {
+        try {
+          const date = new Date(utcTime);
+          const localTime = date.toLocaleString('zh-TW', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+          });
+          $(this).text(localTime);
+        } catch (e) {
+          console.error('Error converting time:', e);
+        }
+      }
+    });
+  }
+});
+</script>
+{% endblock %}

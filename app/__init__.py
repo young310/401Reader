@@ -10,6 +10,9 @@ from flask_migrate import Migrate
 from app.models import db, User
 from config import config
 
+# 導出 db 讓其他模組可以 from app import db
+__all__ = ['db', 'create_app']
+
 
 login_manager = LoginManager()
 jwt = JWTManager()
@@ -63,6 +66,15 @@ def create_app(config_name=None):
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(api_bp, url_prefix='/api')
+
+    # 註冊 SAML SSO 藍圖
+    from app.saml.routes import saml_bp
+    app.register_blueprint(saml_bp)
+
+    # 註冊 Support 藍圖
+    from app.support import support_blueprint
+    from app.support.models import SupportTicket, TicketComment, TicketAttachment, SupportEmailConfig  # 確保模型被導入
+    app.register_blueprint(support_blueprint)
 
     # 建立資料庫表格（開發用）
     with app.app_context():

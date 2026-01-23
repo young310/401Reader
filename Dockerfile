@@ -12,6 +12,10 @@ RUN apt-get update && apt-get install -y \
     gcc \
     libgl1 \
     libglib2.0-0 \
+    pkg-config \
+    libxml2-dev \
+    libxmlsec1-dev \
+    libxmlsec1-openssl \
     && rm -rf /var/lib/apt/lists/*
 
 # 複製依賴檔案

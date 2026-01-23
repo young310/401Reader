@@ -42,6 +42,44 @@
         .btn-primary:hover {
             background: linear-gradient(135deg, #5a6fd6 0%, #6a4190 100%);
         }
+        .divider {
+            display: flex;
+            align-items: center;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            border-bottom: 1px solid #ddd;
+        }
+        .divider span {
+            padding: 0 15px;
+            color: #888;
+            font-size: 14px;
+        }
+        .btn-sso {
+            border-radius: 8px;
+            padding: 12px;
+            font-weight: 500;
+            background: #fff;
+            border: 2px solid #0078d4;
+            color: #0078d4;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: all 0.2s;
+        }
+        .btn-sso:hover {
+            background: #0078d4;
+            color: #fff;
+        }
+        .btn-sso img {
+            width: 20px;
+            height: 20px;
+        }
     </style>
 </head>
 <body>
@@ -70,6 +108,20 @@
             </div>
             <button type="submit" class="btn btn-primary w-100 mb-3">登入</button>
         </form>
+
+        <div class="divider">
+            <span>或</span>
+        </div>
+
+        <a href="/saml/" class="btn btn-sso w-100 mb-3">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 23 23">
+                <path fill="#f35325" d="M1 1h10v10H1z"/>
+                <path fill="#81bc06" d="M12 1h10v10H12z"/>
+                <path fill="#05a6f0" d="M1 12h10v10H1z"/>
+                <path fill="#ffba08" d="M12 12h10v10H12z"/>
+            </svg>
+            使用 Microsoft 帳號登入 (SSO)
+        </a>
 
         <div class="text-center">
             <span class="text-muted">還沒有帳號？</span>

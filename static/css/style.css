@@ -864,6 +864,18 @@ select.form-control {
     color: rgba(255,255,255,0.3) !important;
 }
 
+/* Sidebar Navigation Divider */
+.sidebar-nav li.nav-divider {
+    height: 1px;
+    background: rgba(255,255,255,0.1);
+    margin: 15px 20px;
+    padding: 0;
+}
+
+.sidebar-nav li.nav-divider a {
+    display: none;
+}
+
 /* Database Table Header Filters */
 .table > thead > tr > th div {
     white-space: nowrap;

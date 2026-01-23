@@ -1,0 +1,453 @@
+{% extends "base.html" %}
+
+{% block title %}支援郵件配置管理{% endblock %}
+
+{% block content %}
+<div class="right_col" role="main" style="margin-top: -30px;">
+  <div class="">
+    <div class="page-title">
+      <div class="title_left">
+        <h3><i class="fa fa-envelope"></i> 支援郵件配置管理</h3>
+      </div>
+      <div class="title_right">
+        {% if is_localhost %}
+        <button class="btn btn-primary" data-toggle="modal" data-target="#addConfigModal">
+          <i class="fa fa-plus"></i> 新增配置
+        </button>
+        {% else %}
+        <button class="btn btn-primary" data-toggle="modal" data-target="#addConfigModal"
+          title="僅能新增當前網域 ({{ display_domain }}) 的配置">
+          <i class="fa fa-plus"></i> 新增配置
+        </button>
+        {% endif %}
+        <a href="{{ url_for('support.admin_tickets') }}" class="btn btn-default">
+          <i class="fa fa-arrow-left"></i> 返回控制台
+        </a>
+      </div>
+    </div>
+
+    <div class="clearfix"></div>
+
+    <!-- Info Alert -->
+    <div class="row">
+      <div class="col-md-12">
+        <div class="alert alert-info">
+          <strong>說明：</strong>根據訪問的網域名稱（Domain），系統會自動發送郵件到對應的支援郵箱。
+          可以為每個網域設定多個收件人（用逗號分隔）。
+          <br>
+          <strong>角色通知：</strong>如果設定了角色，系統會額外發送郵件給同公司同辦公室具有這些角色的所有用戶。
+          <br>
+          <strong>當前網域：</strong>{{ display_domain }}
+        </div>
+      </div>
+    </div>
+
+    <!-- Configs Table -->
+    <div class="row">
+      <div class="col-md-12">
+        <div class="x_panel">
+          <div class="x_title">
+            <h2>郵件配置列表</h2>
+            <div class="clearfix"></div>
+          </div>
+          <div class="x_content">
+            <table id="configsTable" class="table table-striped table-bordered" style="width:100%">
+              <thead>
+                <tr>
+                  <th>網域名稱</th>
+                  <th>支援郵箱</th>
+                  <th>角色通知</th>
+                  <th>說明</th>
+                  <th>狀態</th>
+                  <th>建立時間</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for config in configs %}
+                <tr data-config-id="{{ config.id }}">
+                  <td>
+                    <strong>{{ config.domain }}</strong>
+                    {% if config.domain == 'default' %}
+                    <span class="badge badge-info">預設</span>
+                    {% endif %}
+                  </td>
+                  <td class="support-emails">{{ config.support_emails }}</td>
+                  <td class="roles">
+                    {% if config.roles %}
+                    {% for role in config.roles.split(',') %}
+                    <span class="badge badge-info">{{ role.strip() }}</span>
+                    {% endfor %}
+                    {% else %}
+                    <span class="text-muted">無</span>
+                    {% endif %}
+                  </td>
+                  <td class="description">{{ config.description or '-' }}</td>
+                  <td>
+                    <span
+                      class="badge {% if config.is_active %}badge-success{% else %}badge-secondary{% endif %} status-badge">
+                      {% if config.is_active %}啟用{% else %}停用{% endif %}
+                    </span>
+                  </td>
+                  <td>{{ config.created_at.strftime('%Y-%m-%d %H:%M') if config.created_at else '-' }}</td>
+                  <td>
+                    <button class="btn btn-sm btn-primary edit-btn" data-config-id="{{ config.id }}">
+                      <i class="fa fa-edit"></i> 編輯
+                    </button>
+                    {% if config.domain != 'default' and (is_localhost or config.domain == current_domain) %}
+                    <button class="btn btn-sm btn-danger delete-btn" data-config-id="{{ config.id }}">
+                      <i class="fa fa-trash"></i> 刪除
+                    </button>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Config Modal -->
+<div class="modal fade" id="addConfigModal" tabindex="-1" role="dialog">
+  <div class="modal-dialog" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+        <h4 class="modal-title">新增郵件配置</h4>
+      </div>
+      <div class="modal-body">
+        <form id="addConfigForm">
+          <div class="form-group">
+            <label>網域名稱 <span class="text-danger">*</span></label>
+            {% if is_localhost %}
+            <input type="text" class="form-control" id="add_domain" name="domain" required
+              placeholder="例如: yageo.com, localhost, default">
+            <small class="form-text text-muted">
+              輸入 "default" 作為預設配置（當找不到匹配的網域時使用）
+            </small>
+            {% else %}
+            <input type="text" class="form-control" id="add_domain" name="domain" required value="{{ current_domain }}"
+              readonly>
+            <small class="form-text text-muted">
+              僅能為當前網域 ({{ display_domain }}) 建立配置
+            </small>
+            {% endif %}
+          </div>
+          <div class="form-group">
+            <label>支援郵箱 <span class="text-danger">*</span></label>
+            <textarea class="form-control" id="add_support_emails" name="support_emails" rows="3" required
+              placeholder="多個郵箱用逗號分隔，例如: support1@yageo.com, support2@yageo.com"></textarea>
+            <small class="form-text text-muted">
+              可以輸入多個郵箱，用逗號分隔
+            </small>
+          </div>
+          <div class="form-group">
+            <label>角色通知</label>
+            <div class="checkbox-group">
+              <label class="checkbox-inline">
+                <input type="checkbox" name="roles" value="admin"> 系統管理員
+              </label>
+              <label class="checkbox-inline">
+                <input type="checkbox" name="roles" value="manager"> 經管人員
+              </label>
+              <label class="checkbox-inline">
+                <input type="checkbox" name="roles" value="accountant"> 財會人員
+              </label>
+              <label class="checkbox-inline">
+                <input type="checkbox" name="roles" value="reporter"> 一般使用者
+              </label>
+            </div>
+            <small class="form-text text-muted">
+              選擇要接收工單通知的用戶角色。系統會自動發送郵件給具有這些角色的用戶。
+            </small>
+          </div>
+          <div class="form-group">
+            <label>說明</label>
+            <input type="text" class="form-control" id="add_description" name="description"
+              placeholder="選填，例如：開發環境支援郵箱">
+          </div>
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="add_is_active" name="is_active" checked> 啟用
+            </label>
+          </div>
+          <div id="addAlert" class="alert" style="display: none;"></div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="submitAddBtn">
+          <i class="fa fa-save"></i> 建立
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Config Modal -->
+<div class="modal fade" id="editConfigModal" tabindex="-1" role="dialog">
+  <div class="modal-dialog" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+        <h4 class="modal-title">編輯郵件配置</h4>
+      </div>
+      <div class="modal-body">
+        <form id="editConfigForm">
+          <input type="hidden" id="edit_config_id">
+          <div class="form-group">
+            <label>網域名稱</label>
+            <input type="text" class="form-control" id="edit_domain" readonly>
+          </div>
+          <div class="form-group">
+            <label>支援郵箱 <span class="text-danger">*</span></label>
+            <textarea class="form-control" id="edit_support_emails" name="support_emails" rows="3" required></textarea>
+          </div>
+          <div class="form-group">
+            <label>角色通知</label>
+            <div class="checkbox-group">
+              <label class="checkbox-inline">
+                <input type="checkbox" name="roles" value="admin" id="edit_role_admin"> 系統管理員
+              </label>
+              <label class="checkbox-inline">
+                <input type="checkbox" name="roles" value="manager" id="edit_role_manager"> 經管人員
+              </label>
+              <label class="checkbox-inline">
+                <input type="checkbox" name="roles" value="accountant" id="edit_role_accountant"> 財會人員
+              </label>
+              <label class="checkbox-inline">
+                <input type="checkbox" name="roles" value="reporter" id="edit_role_reporter"> 一般使用者
+              </label>
+            </div>
+            <small class="form-text text-muted">
+              選擇要接收工單通知的用戶角色。系統會自動發送郵件給具有這些角色的用戶。
+            </small>
+          </div>
+          <div class="form-group">
+            <label>說明</label>
+            <input type="text" class="form-control" id="edit_description" name="description">
+          </div>
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="edit_is_active" name="is_active"> 啟用
+            </label>
+          </div>
+          <div id="editAlert" class="alert" style="display: none;"></div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="submitEditBtn">
+          <i class="fa fa-save"></i> 更新
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='build/js/datatables.min.js') }}"></script>
+<script src="{{ url_for('static', filename='build/js/elvis_shd.js') }}"></script>
+
+<script>
+  $(document).ready(function () {
+    update_office_dropdown('office', 'OfficeAddress', null, '{{ current_user.locale }}');
+
+    // Initialize DataTable
+    $('#configsTable').DataTable({
+      "order": [[0, "asc"]],
+      "pageLength": 25,
+      "autoWidth": false,
+      "columnDefs": [
+        { "width": "80px", "targets": 0 },  // 網域名稱
+        { "width": "auto", "targets": 1 },   // 支援郵箱
+        { "width": "90px", "targets": 2 },  // 角色通知
+        { "width": "150px", "targets": 3 },  // 說明
+        { "width": "50px", "targets": 4 },   // 狀態
+        { "width": "150px", "targets": 5 },  // 建立時間
+        { "width": "130px", "targets": 6 }   // 操作
+      ],
+      "language": {
+        "emptyTable": "目前沒有配置資料",
+        "info": "顯示第 _START_ 至 _END_ 項結果，共 _TOTAL_ 項",
+        "infoEmpty": "顯示第 0 至 0 項結果，共 0 項",
+        "infoFiltered": "(從 _MAX_ 項結果中過濾)",
+        "lengthMenu": "顯示 _MENU_ 項結果",
+        "loadingRecords": "載入中...",
+        "processing": "處理中...",
+        "search": "搜尋:",
+        "zeroRecords": "沒有符合的配置記錄",
+        "paginate": {
+          "first": "第一頁",
+          "last": "最後一頁",
+          "next": "下一頁",
+          "previous": "上一頁"
+        }
+      }
+    });
+
+    // Add Config
+    $('#submitAddBtn').on('click', function () {
+      // Get selected roles
+      const selectedRoles = [];
+      $('#addConfigModal input[name="roles"]:checked').each(function () {
+        selectedRoles.push($(this).val());
+      });
+
+      const data = {
+        domain: $('#add_domain').val().trim(),
+        support_emails: $('#add_support_emails').val().trim(),
+        roles: selectedRoles.join(','),
+        description: $('#add_description').val().trim(),
+        is_active: $('#add_is_active').is(':checked')
+      };
+
+      if (!data.domain || !data.support_emails) {
+        showAlert('addAlert', 'danger', '網域名稱和支援郵箱為必填欄位');
+        return;
+      }
+
+      $(this).prop('disabled', true);
+
+      $.ajax({
+        url: '/support/api/email-config/create',
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(data),
+        success: function (response) {
+          if (response.success) {
+            showAlert('addAlert', 'success', '配置建立成功');
+            setTimeout(function () {
+              location.reload();
+            }, 1000);
+          } else {
+            showAlert('addAlert', 'danger', response.message);
+          }
+        },
+        error: function (xhr) {
+          const msg = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : '建立失敗';
+          showAlert('addAlert', 'danger', msg);
+        },
+        complete: function () {
+          $('#submitAddBtn').prop('disabled', false);
+        }
+      });
+    });
+
+    // Edit Config - Use event delegation for DataTables compatibility
+    $(document).on('click', '.edit-btn', function () {
+      const configId = $(this).data('config-id');
+      const row = $(`tr[data-config-id="${configId}"]`);
+
+      $('#edit_config_id').val(configId);
+      $('#edit_domain').val(row.find('td:eq(0) strong').text());
+      $('#edit_support_emails').val(row.find('.support-emails').text());
+      $('#edit_description').val(row.find('.description').text());
+      $('#edit_is_active').prop('checked', row.find('.status-badge').hasClass('badge-success'));
+
+      // Clear all role checkboxes first
+      $('#editConfigModal input[name="roles"]').prop('checked', false);
+
+      // Set roles based on current config
+      const rolesBadges = row.find('.roles .badge-info');
+      rolesBadges.each(function () {
+        const role = $(this).text().trim();
+        $(`#edit_role_${role}`).prop('checked', true);
+      });
+
+      $('#editConfigModal').modal('show');
+    });
+
+    $('#submitEditBtn').on('click', function () {
+      const configId = $('#edit_config_id').val();
+
+      // Get selected roles
+      const selectedRoles = [];
+      $('#editConfigModal input[name="roles"]:checked').each(function () {
+        selectedRoles.push($(this).val());
+      });
+
+      const data = {
+        support_emails: $('#edit_support_emails').val().trim(),
+        roles: selectedRoles.join(','),
+        description: $('#edit_description').val().trim(),
+        is_active: $('#edit_is_active').is(':checked')
+      };
+
+      if (!data.support_emails) {
+        showAlert('editAlert', 'danger', '支援郵箱不能為空');
+        return;
+      }
+
+      $(this).prop('disabled', true);
+
+      $.ajax({
+        url: `/support/api/email-config/${configId}/update`,
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(data),
+        success: function (response) {
+          if (response.success) {
+            showAlert('editAlert', 'success', '配置更新成功');
+            setTimeout(function () {
+              location.reload();
+            }, 1000);
+          } else {
+            showAlert('editAlert', 'danger', response.message);
+          }
+        },
+        error: function (xhr) {
+          const msg = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : '更新失敗';
+          showAlert('editAlert', 'danger', msg);
+        },
+        complete: function () {
+          $('#submitEditBtn').prop('disabled', false);
+        }
+      });
+    });
+
+    // Delete Config - Use event delegation for DataTables compatibility
+    $(document).on('click', '.delete-btn', function () {
+      if (!confirm('確定要刪除此配置嗎？')) return;
+
+      const configId = $(this).data('config-id');
+      const btn = $(this);
+
+      btn.prop('disabled', true);
+
+      $.ajax({
+        url: `/support/api/email-config/${configId}/delete`,
+        type: 'POST',
+        success: function (response) {
+          if (response.success) {
+            alert('配置已刪除');
+            location.reload();
+          } else {
+            alert(response.message);
+            btn.prop('disabled', false);
+          }
+        },
+        error: function (xhr) {
+          const msg = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : '刪除失敗';
+          alert(msg);
+          btn.prop('disabled', false);
+        }
+      });
+    });
+
+    function showAlert(elementId, type, message) {
+      const alert = $('#' + elementId);
+      alert.removeClass('alert-success alert-danger alert-warning alert-info')
+        .addClass('alert-' + type)
+        .text(message)
+        .fadeIn();
+    }
+  });
+</script>
+{% endblock %}

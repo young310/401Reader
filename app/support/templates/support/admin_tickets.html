@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block title %}工單管理控制台{% endblock %}
+
+{% block content %}
+<div class="right_col" role="main" style="margin-top: -30px;">
+  <div class="">
+    <div class="page-title">
+      <div class="title_left">
+        <h3><i class="fa fa-dashboard"></i> 工單管理控制台</h3>
+      </div>
+      <div class="title_right">
+        <a href="{{ url_for('support.email_config') }}" class="btn btn-info">
+          <i class="fa fa-envelope"></i> 郵件配置
+        </a>
+        <a href="{{ url_for('support.ticket_list') }}" class="btn btn-default">
+          <i class="fa fa-list"></i> 我的工單
+        </a>
+      </div>
+    </div>
+
+    <div class="clearfix"></div>
+
+    <!-- Statistics -->
+    <div class="row">
+      <div class="col-md-3 col-sm-6 col-xs-12">
+        <div class="x_panel tile">
+          <div class="x_content">
+            <h2>{{ stats.total }}</h2>
+            <p>總工單數</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6 col-xs-12">
+        <div class="x_panel tile" style="border-top: 3px solid #007bff;">
+          <div class="x_content">
+            <h2>{{ stats.new }}</h2>
+            <p>新建工單</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6 col-xs-12">
+        <div class="x_panel tile" style="border-top: 3px solid #ffc107;">
+          <div class="x_content">
+            <h2>{{ stats.in_progress }}</h2>
+            <p>處理中</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6 col-xs-12">
+        <div class="x_panel tile" style="border-top: 3px solid #28a745;">
+          <div class="x_content">
+            <h2>{{ stats.resolved }}</h2>
+            <p>已解決</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tickets Table -->
+    <div class="row">
+      <div class="col-md-12">
+        <div class="x_panel">
+          <div class="x_title">
+            <h2>所有工單</h2>
+            <div class="clearfix"></div>
+          </div>
+          <div class="x_content">
+            <style>
+              #adminTicketsTable td {
+                white-space: nowrap;
+              }
+              #adminTicketsTable td:nth-child(2) {
+                white-space: normal;
+                max-width: 250px;
+              }
+            </style>
+            <table id="adminTicketsTable" class="table table-striped table-bordered" style="width:100%">
+              <thead>
+                <tr>
+                  <th>工單編號</th>
+                  <th>主旨</th>
+                  <th>建立者</th>
+                  <th>類型</th>
+                  <th>優先級</th>
+                  <th>狀態</th>
+                  <th>建立時間</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for ticket in tickets %}
+                <tr>
+                  <td><strong>{{ ticket.ticket_number }}</strong></td>
+                  <td>{{ ticket.subject }}</td>
+                  <td>{{ ticket.user_name }}<br><small class="text-muted">{{ ticket.user_email }}</small></td>
+                  <td>
+                    {% if ticket.category == 'system_error' %}系統錯誤
+                    {% elif ticket.category == 'feature_request' %}功能請求
+                    {% elif ticket.category == 'data_issue' %}資料問題
+                    {% else %}其他{% endif %}
+                  </td>
+                  <td>
+                    <span class="badge
+                      {% if ticket.priority == 'urgent' %}badge-dark
+                      {% elif ticket.priority == 'high' %}badge-danger
+                      {% elif ticket.priority == 'medium' %}badge-warning
+                      {% else %}badge-info{% endif %}">
+                      {% if ticket.priority == 'urgent' %}緊急
+                      {% elif ticket.priority == 'high' %}高
+                      {% elif ticket.priority == 'medium' %}中
+                      {% else %}低{% endif %}
+                    </span>
+                  </td>
+                  <td>
+                    <span class="badge
+                      {% if ticket.status == 'new' %}badge-primary
+                      {% elif ticket.status == 'in_progress' %}badge-warning
+                      {% elif ticket.status == 'resolved' %}badge-success
+                      {% else %}badge-secondary{% endif %}">
+                      {% if ticket.status == 'new' %}新建
+                      {% elif ticket.status == 'in_progress' %}處理中
+                      {% elif ticket.status == 'resolved' %}已解決
+                      {% else %}已關閉{% endif %}
+                    </span>
+                  </td>
+                  <td><span class="local-time" data-utc="{{ ticket.created_at.isoformat() }}Z">{{ ticket.created_at.strftime('%Y-%m-%d %H:%M') }}</span></td>
+                  <td>
+                    <a href="{{ url_for('support.ticket_detail', ticket_id=ticket.id) }}" class="btn btn-sm btn-info">
+                      <i class="fa fa-eye"></i>
+                    </a>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='build/js/pdfmake.min.js') }}"></script>
+<script src="{{ url_for('static', filename='build/js/vfs_fonts.js') }}"></script>
+<script src="{{ url_for('static', filename='build/js/datatables.min.js') }}"></script>
+<script src="{{ url_for('static', filename='build/js/elvis_shd.js') }}"></script>
+<script>
+$(document).ready(function() {
+  // Convert UTC times to local timezone
+  convertToLocalTime();
+  
+  update_office_dropdown('office', 'OfficeAddress', null, '{{ current_user.locale }}');
+  $('#adminTicketsTable').DataTable({
+    "order": [[6, "desc"]],
+    "pageLength": 50,
+    "autoWidth": false,
+    "columnDefs": [
+      { "width": "120px", "targets": 0 },  // 工單編號
+      { "width": "auto", "targets": 1 },   // 主旨 (自動寬度)
+      { "width": "150px", "targets": 2 },  // 建立者
+      { "width": "80px", "targets": 3 },   // 類型
+      { "width": "70px", "targets": 4 },   // 優先級
+      { "width": "70px", "targets": 5 },   // 狀態
+      { "width": "130px", "targets": 6 },  // 建立時間
+      { "width": "60px", "targets": 7 }    // 操作
+    ],
+    "language": {
+      "url": "//cdn.datatables.net/plug-ins/1.10.24/i18n/Chinese-traditional.json",
+      "emptyTable": "目前沒有工單資料",
+      "zeroRecords": "沒有符合的工單記錄"
+    }
+  });
+});
+
+function convertToLocalTime() {
+  $('.local-time').each(function() {
+    const utcTime = $(this).data('utc');
+    if (utcTime) {
+      try {
+        const date = new Date(utcTime);
+        const localTime = date.toLocaleString('zh-TW', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        });
+        $(this).text(localTime);
+      } catch (e) {
+        console.error('Error converting time:', e);
+      }
+    }
+  });
+}
+</script>
+{% endblock %}
